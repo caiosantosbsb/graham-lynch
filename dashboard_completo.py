@@ -658,25 +658,15 @@ def generate_html(all_data: list[dict]) -> str:
 
 <div id="pro" class="tab-content">
   <div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
-    <h3 style="margin-bottom: 8px;">🎯 Oportunidades Recomendadas</h3>
-    <p style="color: var(--text2); font-size: 0.9em;">Score ≥ 4 | Ordenadas por Margem de Segurança</p>
-    <p style="color: var(--text2); font-size: 0.85em; margin-top: 8px;">⚠️ <span style="color: var(--yellow);">Baixa Liquidez</span> = Volume diário < R$ 50.000</p>
+    <h3 style="margin-bottom: 8px;">💎 Graham PRO — Valor com Segurança</h3>
+    <p style="color: var(--text2); font-size: 0.9em;">Score >= 4 | Ranking por força de recomendação (Score + Margem + P/L + Dív/PL)</p>
+    <div style="display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap;">
+      <span style="font-size: 0.8em; padding: 4px 10px; border-radius: 8px; background: rgba(63,185,80,0.2); color: var(--green);">COMPRA FORTE = Score 6 + Margem > 0%</span>
+      <span style="font-size: 0.8em; padding: 4px 10px; border-radius: 8px; background: rgba(88,166,255,0.2); color: var(--blue);">COMPRAR = Score >= 5</span>
+      <span style="font-size: 0.8em; padding: 4px 10px; border-radius: 8px; background: rgba(210,153,34,0.2); color: var(--yellow);">OBSERVAR = Score 4</span>
+    </div>
   </div>
-  <table class="pro-table">
-    <thead>
-      <tr>
-        <th>Ticker</th>
-        <th>Cotação</th>
-        <th>P.Justo</th>
-        <th>Margem %</th>
-        <th>P/L</th>
-        <th>ROE</th>
-        <th>Volume</th>
-        <th>Score</th>
-      </tr>
-    </thead>
-    <tbody id="pro-body"></tbody>
-  </table>
+  <div id="pro-body"></div>
 </div>
 
 <div id="topbuy" class="tab-content">
@@ -1032,42 +1022,100 @@ function renderPro() {{
   
   const filtered = GRAHAM_DATA
     .filter(s => s.score >= 4)
-    .sort((a, b) => {{
-      const margA = a.margem_seguranca || 0;
-      const margB = b.margem_seguranca || 0;
-      return margB - margA;
-    }});
+    .map(s => {{
+      let forca = 0;
+      let nivel = '';
+      let nivelClass = '';
+      
+      // Score é o fator principal (6/6 = empresa excelente)
+      forca += s.score * 1.5;
+      
+      // Margem de segurança (bonus, não fator principal)
+      const margem = s.margem_seguranca || 0;
+      if (margem > 0.5) forca += 3;
+      else if (margem > 0.3) forca += 2.5;
+      else if (margem > 0.1) forca += 2;
+      else if (margem > 0) forca += 1;
+      
+      // P/L baixo = empresa barata
+      if (s.pl && s.pl > 0 && s.pl < 5) forca += 2;
+      else if (s.pl && s.pl > 0 && s.pl < 8) forca += 1.5;
+      else if (s.pl && s.pl > 0 && s.pl < 12) forca += 1;
+      
+      // Dív/PL baixa = empresa saudável
+      if (s.div_pl !== null && s.div_pl >= 0 && s.div_pl < 0.3) forca += 1.5;
+      else if (s.div_pl !== null && s.div_pl >= 0 && s.div_pl < 0.5) forca += 1;
+      else if (s.div_pl !== null && s.div_pl >= 0 && s.div_pl < 1) forca += 0.5;
+      
+      // ROE alto = empresa eficiente
+      if (s.roe && s.roe > 0.25) forca += 1.5;
+      else if (s.roe && s.roe > 0.15) forca += 1;
+      
+      // Liquidez (penalidade se baixa)
+      const lowLiq = (s.volume_dia || 0) < MIN_LIQUIDITY;
+      if (lowLiq) forca -= 1;
+      
+      // Nivel de recomendação
+      if (s.score >= 6 && margem > 0) {{
+        nivel = 'COMPRA FORTE';
+        nivelClass = 'status-compra-forte';
+      }} else if (s.score >= 6) {{
+        nivel = 'COMPRAR';
+        nivelClass = 'status-comprar';
+      }} else if (s.score >= 5) {{
+        nivel = 'COMPRAR';
+        nivelClass = 'status-comprar';
+      }} else {{
+        nivel = 'OBSERVAR';
+        nivelClass = 'status-observar';
+      }}
+      
+      // Verificar Lynch
+      const lynch = LYNCH_DATA.find(l => l.ticker === s.ticker);
+      const dualOk = lynch && lynch.score >= 4;
+      
+      return {{ ...s, forca, nivel, nivelClass, lowLiq, dualOk, lynch }};
+    }})
+    .sort((a, b) => b.forca - a.forca);
   
   if (filtered.length === 0) {{
-    document.getElementById('pro-body').innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px;">Nenhuma ação com score ≥ 4 encontrada</td></tr>';
+    document.getElementById('pro-body').innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text2);">Nenhuma acao com score >= 4 no metodo Graham</div>';
     return;
   }}
   
-  document.getElementById('pro-body').innerHTML = filtered.map(s => {{
-    const lowLiquidity = (s.volume_dia || 0) < MIN_LIQUIDITY;
-    const rowClass = lowLiquidity ? 'low-liquidity' : '';
-    
-    return `<tr class="${{rowClass}}">
-      <td class="ticker">
-        ${{s.ticker}}
-        ${{lowLiquidity ? '<span class="liquidity-badge">⚠️ Baixa Liq.</span>' : ''}}
-      </td>
-      <td>R$ ${{fmt(s.cotacao)}}</td>
-      <td>${{s.preco_justo ? 'R$ ' + fmt(s.preco_justo) : 'N/A'}}</td>
-      <td class="margem-col">${{fmtPct(s.margem_seguranca)}}</td>
-      <td>${{fmt(s.pl, 1)}}</td>
-      <td>${{fmtPct(s.roe)}}</td>
-      <td>${{s.volume_dia ? 'R$ ' + (s.volume_dia / 1000).toFixed(0) + 'K' : 'N/A'}}</td>
-      <td>${{'★'.repeat(s.score) + '☆'.repeat(6-s.score)}}</td>
-    </tr>`;
-  }}).join('');
+  document.getElementById('pro-body').innerHTML = filtered.map((s, i) => `
+    <div style="background: var(--card); border: 2px solid ${{s.nivel === 'COMPRA FORTE' ? 'var(--green)' : s.nivel === 'COMPRAR' ? 'var(--blue)' : 'var(--border)'}}; border-radius: 12px; padding: 16px 20px; margin-bottom: 10px; ${{s.lowLiq ? 'opacity: 0.7; border-style: dashed;' : ''}}">
+      
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <span style="font-size: 1.4em; font-weight: 700; color: var(--text2); min-width: 40px;">#${{i + 1}}</span>
+        <span style="font-size: 1.2em; font-weight: 700; color: var(--blue);">
+          ${{s.ticker}}
+          ${{s.dualOk ? '<span style="font-size: 0.6em; background: rgba(63,185,80,0.2); color: var(--green); padding: 2px 6px; border-radius: 4px; margin-left: 4px; vertical-align: middle;">+Lynch</span>' : ''}}
+          ${{s.lowLiq ? '<span class="liquidity-badge">⚠️ Liq.</span>' : ''}}
+        </span>
+        <span class="status ${{s.nivelClass}}">${{s.nivel}}</span>
+        <span style="color: var(--text2); font-size: 0.85em;">R$ ${{fmt(s.cotacao)}} ${{s.preco_justo ? '→ Justo R$ ' + fmt(s.preco_justo) : ''}}</span>
+        <span style="margin-left: auto; font-size: 0.8em; color: var(--text2);">${{s.forca.toFixed(1)}} pts</span>
+      </div>
+      
+      <div style="display: flex; gap: 12px; margin-top: 10px; flex-wrap: wrap; align-items: center;">
+        <span style="background: #0d1117; padding: 8px 16px; border-radius: 8px; font-size: 1.05em;">Margem <strong style="color: ${{(s.margem_seguranca || 0) > 0 ? 'var(--green)' : 'var(--red)'}}; font-size: 1.2em;">${{s.margem_seguranca ? (s.margem_seguranca * 100).toFixed(0) + '%' : 'N/A'}}</strong></span>
+        <span style="background: #0d1117; padding: 8px 16px; border-radius: 8px; font-size: 1.05em;">P/L <strong style="color: ${{s.pl && s.pl < 10 ? 'var(--green)' : 'var(--text)'}}; font-size: 1.2em;">${{s.pl ? s.pl.toFixed(1) : 'N/A'}}</strong></span>
+        <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">Dív/PL <strong style="color: ${{s.div_pl !== null && s.div_pl < 0.5 ? 'var(--green)' : 'var(--text)'}}">${{s.div_pl !== null ? s.div_pl.toFixed(2) : 'N/A'}}</strong></span>
+        <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">ROE <strong style="color: ${{s.roe && s.roe > 0.15 ? 'var(--green)' : 'var(--text)'}}">${{s.roe ? (s.roe * 100).toFixed(0) + '%' : 'N/A'}}</strong></span>
+        <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">${{'★'.repeat(s.score) + '☆'.repeat(6-s.score)}}</span>
+        ${{s.dualOk ? '<span style="font-size: 0.75em; color: var(--green);">Lynch ' + '★'.repeat(s.lynch.score) + '</span>' : ''}}
+      </div>
+    </div>
+  `).join('');
 }}
 
 function renderLynchPro() {{
+  const MIN_LIQUIDITY = 50000;
+  
   const filtered = LYNCH_DATA
     .filter(s => s.score >= 4)
     .map(s => {{
-      // Calcular forca de recomendacao
       let forca = 0;
       let nivel = '';
       let nivelClass = '';
@@ -1110,7 +1158,11 @@ function renderLynchPro() {{
       const graham = GRAHAM_DATA.find(g => g.ticker === s.ticker);
       const dualOk = graham && graham.score >= 4;
       
-      return {{ ...s, forca, nivel, nivelClass, dualOk, graham }};
+      // Liquidez
+      const lowLiq = (s.volume_dia || 0) < MIN_LIQUIDITY;
+      if (lowLiq) forca -= 1;
+      
+      return {{ ...s, forca, nivel, nivelClass, dualOk, graham, lowLiq }};
     }})
     .sort((a, b) => b.forca - a.forca);
   
@@ -1120,49 +1172,27 @@ function renderLynchPro() {{
   }}
   
   document.getElementById('lynchpro-body').innerHTML = filtered.map((s, i) => `
-    <div style="background: var(--card); border: 2px solid ${{s.nivel === 'COMPRA FORTE' ? 'var(--green)' : s.nivel === 'COMPRAR' || s.nivel === 'COMPRA MODERADA' ? 'var(--blue)' : 'var(--border)'}}; border-radius: 12px; padding: 20px; margin-bottom: 12px; display: grid; grid-template-columns: 60px 1fr 1fr 1fr auto; gap: 16px; align-items: center;">
+    <div style="background: var(--card); border: 2px solid ${{s.nivel === 'COMPRA FORTE' ? 'var(--green)' : s.nivel === 'COMPRAR' || s.nivel === 'COMPRA MODERADA' ? 'var(--blue)' : 'var(--border)'}}; border-radius: 12px; padding: 16px 20px; margin-bottom: 10px;">
       
-      <div style="text-align: center;">
-        <div style="font-size: 1.8em; font-weight: 700; color: var(--text2);">#${{i + 1}}</div>
-        <div style="font-size: 0.75em; color: var(--text2);">${{s.forca.toFixed(1)}} pts</div>
-      </div>
-      
-      <div>
-        <div style="font-size: 1.3em; font-weight: 700; color: var(--blue);">
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <span style="font-size: 1.4em; font-weight: 700; color: var(--text2); min-width: 40px;">#${{i + 1}}</span>
+        <span style="font-size: 1.2em; font-weight: 700; color: var(--blue);">
           ${{s.ticker}}
-          ${{s.dualOk ? '<span style="font-size: 0.6em; background: rgba(63,185,80,0.2); color: var(--green); padding: 2px 6px; border-radius: 4px; margin-left: 6px; vertical-align: middle;">+Graham</span>' : ''}}
-        </div>
-        <div style="color: var(--text2); font-size: 0.9em; margin-top: 4px;">R$ ${{fmt(s.cotacao)}}</div>
-        <div style="margin-top: 6px;">
-          <span class="status ${{s.nivelClass}}">${{s.nivel}}</span>
-        </div>
+          ${{s.dualOk ? '<span style="font-size: 0.6em; background: rgba(63,185,80,0.2); color: var(--green); padding: 2px 6px; border-radius: 4px; margin-left: 4px; vertical-align: middle;">+Graham</span>' : ''}}
+          ${{s.lowLiq ? '<span class="liquidity-badge">⚠️ Liq.</span>' : ''}}
+        </span>
+        <span class="status ${{s.nivelClass}}">${{s.nivel}}</span>
+        <span style="color: var(--text2); font-size: 0.85em;">R$ ${{fmt(s.cotacao)}}</span>
+        <span style="margin-left: auto; font-size: 0.8em; color: var(--text2);">${{s.forca.toFixed(1)}} pts</span>
       </div>
       
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-        <div style="background: #0d1117; padding: 8px; border-radius: 8px; text-align: center;">
-          <div style="font-size: 0.7em; color: var(--text2);">PEG</div>
-          <div style="font-weight: 700; font-size: 1.1em; color: ${{s.peg_ratio && s.peg_ratio < 1 ? 'var(--green)' : 'var(--red)'}};">${{s.peg_ratio ? s.peg_ratio.toFixed(2) : 'N/A'}}</div>
-        </div>
-        <div style="background: #0d1117; padding: 8px; border-radius: 8px; text-align: center;">
-          <div style="font-size: 0.7em; color: var(--text2);">Growth</div>
-          <div style="font-weight: 700; font-size: 1.1em; color: ${{s.growth_rate > 10 ? 'var(--green)' : 'var(--text)'}}">${{s.growth_rate.toFixed(1)}}%</div>
-        </div>
-        <div style="background: #0d1117; padding: 8px; border-radius: 8px; text-align: center;">
-          <div style="font-size: 0.7em; color: var(--text2);">ROE</div>
-          <div style="font-weight: 700; font-size: 1.1em;">${{s.roe ? (s.roe * 100).toFixed(0) + '%' : 'N/A'}}</div>
-        </div>
-        <div style="background: #0d1117; padding: 8px; border-radius: 8px; text-align: center;">
-          <div style="font-size: 0.7em; color: var(--text2);">Score</div>
-          <div style="font-weight: 700; font-size: 1.1em;">${{'★'.repeat(s.score)}}</div>
-        </div>
-      </div>
-      
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; min-width: 200px;">
-        ${{s.criterios.map(c => `<div style="font-size: 0.75em; color: var(--text2);">${{c}}</div>`).join('')}}
-      </div>
-      
-      <div style="text-align: center; min-width: 50px;">
-        ${{s.dualOk ? '<div style="font-size: 0.7em; color: var(--green);">Graham<br>' + '★'.repeat(s.graham.score) + '</div>' : '<div style="font-size: 0.7em; color: var(--text2);">Graham<br>' + (s.graham ? s.graham.score + '/6' : '—') + '</div>'}}
+      <div style="display: flex; gap: 12px; margin-top: 10px; flex-wrap: wrap; align-items: center;">
+        <span style="background: #0d1117; padding: 8px 16px; border-radius: 8px; font-size: 1.05em;">PEG <strong style="color: ${{s.peg_ratio && s.peg_ratio < 1 ? 'var(--green)' : 'var(--red)'}}; font-size: 1.2em;">${{s.peg_ratio ? s.peg_ratio.toFixed(2) : 'N/A'}}</strong></span>
+        <span style="background: #0d1117; padding: 8px 16px; border-radius: 8px; font-size: 1.05em;">Growth <strong style="color: ${{s.growth_rate > 10 ? 'var(--green)' : 'var(--text)'}}; font-size: 1.2em;">${{s.growth_rate ? s.growth_rate.toFixed(1) + '%' : 'N/A'}}</strong></span>
+        <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">ROE <strong style="color: ${{s.roe && s.roe > 0.15 ? 'var(--green)' : 'var(--text)'}}">${{s.roe ? (s.roe * 100).toFixed(0) + '%' : 'N/A'}}</strong></span>
+        <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">Yield <strong>${{s.dividend_yield ? (s.dividend_yield > 1 ? s.dividend_yield.toFixed(1) : (s.dividend_yield * 100).toFixed(1)) + '%' : 'N/A'}}</strong></span>
+        <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">${{'★'.repeat(s.score) + '☆'.repeat(6-s.score)}}</span>
+        ${{s.dualOk ? '<span style="font-size: 0.75em; color: var(--green);">Graham ' + '★'.repeat(s.graham.score) + '</span>' : ''}}
       </div>
     </div>
   `).join('');
