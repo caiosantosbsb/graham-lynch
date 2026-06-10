@@ -42,6 +42,7 @@ TICKERS = [
 GRAHAM_CONSTANT = 22.5
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 MIN_LIQUIDITY = 50000  # Volume mínimo em R$ para ser considerado bom (< = baixa liquidez)
+BRAPI_TOKEN = os.environ.get("BRAPI_TOKEN", "")  # Token gratuito de brapi.dev
 
 
 # ============================================================
@@ -49,10 +50,13 @@ MIN_LIQUIDITY = 50000  # Volume mínimo em R$ para ser considerado bom (< = baix
 # ============================================================
 
 def fetch_from_brapi(ticker: str) -> Optional[dict]:
-    """API brapi.dev (fallback)"""
+    """API brapi.dev (fallback ou primária com token)"""
     try:
         url = f"https://brapi.dev/api/quote/{ticker}"
-        resp = requests.get(url, params={"fundamental": "true"}, headers=HEADERS, timeout=10)
+        params = {"fundamental": "true"}
+        if BRAPI_TOKEN:
+            params["token"] = BRAPI_TOKEN
+        resp = requests.get(url, params=params, headers=HEADERS, timeout=15)
         if resp.status_code != 200:
             return None
         
@@ -299,13 +303,15 @@ def fetch_stock_data(ticker: str) -> Optional[dict]:
     """Tenta StatusInvest (Brasil) → brapi → yfinance (EUA)"""
     print(f"  {ticker}...", end=" ")
     
-    # Tenta StatusInvest (para Bovespa - tickers com números finais)
+    # Tickers brasileiros (terminam em número)
     if ticker[-1].isdigit():
+        # Tenta StatusInvest primeiro (melhor dados, mas falha em datacenter)
         data = fetch_from_statusinvest(ticker)
         if data and data.get("lpa") and data.get("vpa"):
             print("OK (StatusInvest)")
             return data
         
+        # Fallback: brapi.dev (funciona em datacenter com token)
         data_brapi = fetch_from_brapi(ticker)
         if data_brapi:
             if data:
@@ -317,6 +323,10 @@ def fetch_stock_data(ticker: str) -> Optional[dict]:
                 data = data_brapi
             if data.get("lpa") and data.get("vpa"):
                 print("OK (brapi)")
+                return data
+            # Aceita brapi mesmo sem LPA/VPA se tiver cotação (dados parciais)
+            if data.get("cotacao"):
+                print("OK (brapi - parcial)")
                 return data
     
     # Tenta yfinance (para tickers de EUA)

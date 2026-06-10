@@ -42,6 +42,7 @@ jobs:
         run: python dashboard_completo.py
         env:
           PYTHONIOENCODING: utf-8
+          BRAPI_TOKEN: ${{ secrets.BRAPI_TOKEN }}
 
       - name: 📁 Preparar para deploy
         run: |
