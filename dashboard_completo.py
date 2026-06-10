@@ -324,10 +324,14 @@ def fetch_stock_data(ticker: str) -> Optional[dict]:
             if data.get("lpa") and data.get("vpa"):
                 print("OK (brapi)")
                 return data
-            # Aceita brapi mesmo sem LPA/VPA se tiver cotação (dados parciais)
-            if data.get("cotacao"):
-                print("OK (brapi - parcial)")
-                return data
+        
+        # Fallback final: yfinance com sufixo .SA (funciona em datacenter)
+        data_yf = fetch_from_yfinance(f"{ticker}.SA")
+        if data_yf and data_yf.get("lpa") and data_yf.get("vpa"):
+            data_yf["ticker"] = ticker  # Manter ticker original sem .SA
+            data_yf["fonte"] = "yfinance"
+            print("OK (yfinance .SA)")
+            return data_yf
     
     # Tenta yfinance (para tickers de EUA)
     else:
