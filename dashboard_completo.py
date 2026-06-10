@@ -428,7 +428,7 @@ def calc_graham(data: dict) -> dict:
         "div_pl": div_pl,
         "div_ebitda": div_ebitda,
         "volume_dia": data.get("volume_dia"),
-        "liquidez": "ALTA" if data.get("volume_dia", 0) >= 5e6 else "MEDIA" if data.get("volume_dia", 0) >= 500e3 else "BAIXA",
+        "liquidez": "ALTA" if (data.get("volume_dia") or 0) >= 5e6 else "MEDIA" if (data.get("volume_dia") or 0) >= 500e3 else "BAIXA",
         "fonte": data.get("fonte")
     }
 
