@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+
+# Output (gerado pelo CI)
+graham_dashboard.html
+
+# OS
+.DS_Store
+Thumbs.db

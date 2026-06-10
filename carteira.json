@@ -1,0 +1,42 @@
+{
+  "carteira": [
+    {
+      "id": 1,
+      "ticker": "NVDA",
+      "quantidade": 10,
+      "preco_medio": 200.00,
+      "data_compra": "2026-05-15",
+      "descricao": "Crescimento - Tech americana"
+    },
+    {
+      "id": 2,
+      "ticker": "PETR4",
+      "quantidade": 100,
+      "preco_medio": 40.50,
+      "data_compra": "2026-05-20",
+      "descricao": "Valor + Dividendos"
+    },
+    {
+      "id": 3,
+      "ticker": "SUZB3",
+      "quantidade": 100,
+      "preco_medio": 40.00,
+      "data_compra": "2026-06-01",
+      "descricao": "Celulose - Crescimento"
+    },
+    {
+      "id": 4,
+      "ticker": "BNBR3",
+      "quantidade": 50,
+      "preco_medio": 100.00,
+      "data_compra": "2026-04-10",
+      "descricao": "Renda passiva - Dividendos altos"
+    }
+  ],
+  "meta_alocacao": {
+    "crescimento": 0.60,
+    "renda": 0.30,
+    "seguranca": 0.10
+  },
+  "notas": "Adicione suas compras aqui no formato acima. Quantity pode ser fracionária."
+}

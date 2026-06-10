@@ -1,0 +1,57 @@
+name: 📊 Atualizar Dashboard Graham & Lynch
+
+on:
+  # Executa todo dia útil às 22:00 UTC (19:00 BRT, pós-fechamento mercado)
+  schedule:
+    - cron: '0 22 * * 1-5'
+  
+  # Permite execução manual pelo GitHub
+  workflow_dispatch:
+
+  # Também atualiza quando o código muda
+  push:
+    branches: [main]
+    paths:
+      - 'dashboard_completo.py'
+      - 'carteira.json'
+      - 'requirements.txt'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  generate-dashboard:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout repositório
+        uses: actions/checkout@v4
+
+      - name: 🐍 Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Instalar dependências
+        run: pip install -r requirements.txt
+
+      - name: 🔄 Gerar Dashboard
+        run: python dashboard_completo.py
+        env:
+          PYTHONIOENCODING: utf-8
+
+      - name: 📁 Preparar para deploy
+        run: |
+          mkdir -p deploy
+          cp graham_dashboard.html deploy/index.html
+
+      - name: 🚀 Deploy para GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./deploy
+          publish_branch: gh-pages
+          commit_message: "📊 Dashboard atualizado - $(date -u '+%Y-%m-%d %H:%M UTC')"
