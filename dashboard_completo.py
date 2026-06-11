@@ -25,7 +25,7 @@ if sys.stdout.encoding != "utf-8":
 TICKERS = [
     # Brasil - Blue Chips & Dividendos
     "SAPR11", "PETR4", "GOAU4", "CMIG4", "ITSA4", "AXIA3",
-    "ENBR3", "FLRY3", "SUZB3", "PSSA3", "BNBR3", "BBAS3",
+    "ENBR3", "FLRY3", "SUZB3", "PSSA3", "BNBR3", "BBAS3", "CPFE3",
     "GGBR4", "LEVE3", "NEOE3", "SBSP3", "VALE3", "TAEE11",
     "VIVT3", "TUPY3", "CPLE3", "AURE3", "RAPT4", "CSNA3", "WEGE3",
     
@@ -541,6 +541,20 @@ def generate_html(all_data: list[dict]) -> str:
     
     carteira_json = json.dumps(carteira_data.get("carteira", []))
     
+    # Lista de tickers BR para identificar moeda no JS
+    br_tickers = [t for t in TICKERS if any(c.isdigit() for c in t)]
+    br_tickers_json = json.dumps(br_tickers)
+    
+    # Cotação USD/BRL via AwesomeAPI (gratuita)
+    usd_brl = 5.50  # fallback
+    try:
+        resp = requests.get("https://economia.awesomeapi.com.br/json/last/USD-BRL", timeout=5)
+        if resp.status_code == 200:
+            usd_brl = float(resp.json()["USDBRL"]["bid"])
+            print(f"  [USD/BRL] Cotação: R$ {usd_brl:.2f}")
+    except Exception as e:
+        print(f"  [USD/BRL] Falha ao buscar câmbio, usando fallback R$ {usd_brl:.2f}")
+    
     return f"""<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -720,6 +734,7 @@ def generate_html(all_data: list[dict]) -> str:
 const GRAHAM_DATA = {graham_json};
 const LYNCH_DATA = {lynch_json};
 const CARTEIRA_DATA = {carteira_json};
+const USD_BRL = {usd_brl:.4f};
 
 function switchTab(tab) {{
   document.querySelectorAll('.tab-content').forEach(e => e.classList.remove('active'));
@@ -738,16 +753,20 @@ function fmtPct(v) {{
   return (v * 100).toFixed(1) + '%';
 }}
 
+const BR_TICKERS = {br_tickers_json};
+const isUS = (ticker) => !BR_TICKERS.includes(ticker);
+const moeda = (ticker) => isUS(ticker) ? 'US$' : 'R$';
+
 function renderCarteira() {{
   if (!CARTEIRA_DATA || CARTEIRA_DATA.length === 0) {{
     document.getElementById('carteira-body').innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text2);">Nenhuma posicao registrada. Adicione suas compras em carteira.json</div>';
     return;
   }}
   
-  let totalInvestido = 0;
-  let totalAtual = 0;
+  let totalBRL_inv = 0, totalBRL_atual = 0;
+  let totalUSD_inv = 0, totalUSD_atual = 0;
   
-  // Calcular totais
+  // Calcular totais separados por moeda
   CARTEIRA_DATA.forEach(pos => {{
     const stock = GRAHAM_DATA.find(s => s.ticker === pos.ticker) || 
                   LYNCH_DATA.find(s => s.ticker === pos.ticker);
@@ -755,32 +774,52 @@ function renderCarteira() {{
     if (stock) {{
       const valorInvestido = pos.quantidade * pos.preco_medio;
       const valorAtual = pos.quantidade * stock.cotacao;
-      const ganho = valorAtual - valorInvestido;
-      const pct = (ganho / valorInvestido) * 100;
       
-      totalInvestido += valorInvestido;
-      totalAtual += valorAtual;
+      if (isUS(pos.ticker)) {{
+        totalUSD_inv += valorInvestido;
+        totalUSD_atual += valorAtual;
+      }} else {{
+        totalBRL_inv += valorInvestido;
+        totalBRL_atual += valorAtual;
+      }}
     }}
   }});
   
-  const totalGanho = totalAtual - totalInvestido;
-  const totalPct = totalInvestido > 0 ? (totalGanho / totalInvestido) * 100 : 0;
+  const totalBRL_ganho = totalBRL_atual - totalBRL_inv;
+  const totalBRL_pct = totalBRL_inv > 0 ? (totalBRL_ganho / totalBRL_inv) * 100 : 0;
+  const totalUSD_ganho = totalUSD_atual - totalUSD_inv;
+  const totalUSD_pct = totalUSD_inv > 0 ? (totalUSD_ganho / totalUSD_inv) * 100 : 0;
+  
+  // Patrimônio total convertido em BRL
+  const totalPatrimonioBRL = totalBRL_atual + (totalUSD_atual * USD_BRL);
+  const totalInvestidoBRL = totalBRL_inv + (totalUSD_inv * USD_BRL);
+  const totalGanhoBRL = totalPatrimonioBRL - totalInvestidoBRL;
+  const totalPctBRL = totalInvestidoBRL > 0 ? (totalGanhoBRL / totalInvestidoBRL) * 100 : 0;
   
   // Atualizar totalizador
-  document.getElementById('carteira-total').textContent = 'R$ ' + fmt(totalAtual);
+  let totalStr = 'R$ ' + fmt(totalBRL_atual);
+  if (totalUSD_atual > 0) totalStr += '  |  US$ ' + fmt(totalUSD_atual);
+  document.getElementById('carteira-total').innerHTML = totalStr + 
+    `<div style="font-size: 0.5em; color: var(--text2); margin-top: 6px;">Patrim\\u00f4nio Total: R$ ${{fmt(totalPatrimonioBRL)}} <span style="font-size: 0.85em;">(USD/BRL ${{fmt(USD_BRL, 2)}})</span></div>`;
   
-  const rentLabel = totalGanho >= 0 ? '+' : '';
-  document.getElementById('carteira-rentabilidade').innerHTML = `
-    <span style="color: ${{totalGanho >= 0 ? 'var(--green)' : 'var(--red)'}}">${{rentLabel}}${{totalPct.toFixed(2)}}% (R$ ${{fmt(totalGanho)}})</span>
-  `;
+  const brlLabel = totalBRL_ganho >= 0 ? '+' : '';
+  const usdLabel = totalUSD_ganho >= 0 ? '+' : '';
+  const totalLabel = totalGanhoBRL >= 0 ? '+' : '';
+  let rentHtml = `<span style="color: ${{totalBRL_ganho >= 0 ? 'var(--green)' : 'var(--red)'}}">&#127463;&#127479; ${{brlLabel}}${{totalBRL_pct.toFixed(2)}}% (R$ ${{fmt(totalBRL_ganho)}})</span>`;
+  if (totalUSD_inv > 0) {{
+    rentHtml += `<span style="margin-left: 20px; color: ${{totalUSD_ganho >= 0 ? 'var(--green)' : 'var(--red)'}}">&#127482;&#127480; ${{usdLabel}}${{totalUSD_pct.toFixed(2)}}% (US$ ${{fmt(totalUSD_ganho)}})</span>`;
+  }}
+  rentHtml += `<div style="margin-top: 8px; color: ${{totalGanhoBRL >= 0 ? 'var(--green)' : 'var(--red)'}}; font-weight: 700;">Total em R$: ${{totalLabel}}${{totalPctBRL.toFixed(2)}}% (R$ ${{fmt(totalGanhoBRL)}})</div>`;
+  document.getElementById('carteira-rentabilidade').innerHTML = rentHtml;
   
   // Renderizar posicoes
   const header = `
-    <div class="carteira-card header">
+    <div class="carteira-card header" style="grid-template-columns: 1fr 1fr 1fr 1fr 1fr;">
       <div>Ticker</div>
       <div>Valor Investido</div>
       <div>Valor Atual</div>
       <div>Ganho / Perda</div>
+      <div style="text-align: center;">Sinal</div>
     </div>
   `;
   
@@ -798,26 +837,81 @@ function renderCarteira() {{
     const graham = GRAHAM_DATA.find(s => s.ticker === pos.ticker);
     const lynch = LYNCH_DATA.find(s => s.ticker === pos.ticker);
     
-    const status = graham?.status ? `<span class="status-badge">${{graham.status.substr(0, 3)}}</span>` : '';
+    // Sinal de ação inteligente
+    let sinal = '';
+    let sinalClass = '';
+    let sinalMotivo = '';
+    
+    const gScore = graham ? graham.score : 0;
+    const lScore = lynch ? lynch.score : 0;
+    const margem = graham ? (graham.margem_seguranca || 0) : 0;
+    const peg = lynch ? lynch.peg_ratio : null;
+    
+    // REFORÇAR: score alto + preço ainda bom
+    if ((gScore >= 5 && margem > 0) || (lScore >= 5 && peg && peg < 0.8)) {{
+      sinal = '🔵 REFORÇAR';
+      sinalClass = 'color: var(--blue)';
+      const motivos = [];
+      if (gScore >= 5) motivos.push('Graham ' + gScore + '/6');
+      if (lScore >= 5) motivos.push('Lynch ' + lScore + '/6');
+      if (margem > 0) motivos.push('Margem +' + (margem * 100).toFixed(0) + '%');
+      if (peg && peg < 1) motivos.push('PEG ' + peg.toFixed(2));
+      sinalMotivo = motivos.join(' | ');
+    }}
+    // MANTER: score médio ou bom sem urgência
+    else if (gScore >= 4 || lScore >= 4) {{
+      sinal = '🟢 MANTER';
+      sinalClass = 'color: var(--green)';
+      const motivos = [];
+      if (gScore >= 4) motivos.push('Graham ' + gScore + '/6');
+      if (lScore >= 4) motivos.push('Lynch ' + lScore + '/6');
+      sinalMotivo = motivos.join(' | ');
+    }}
+    // AVALIAR TROCA: score baixo, ação cara ou sem fundamento
+    else if (gScore <= 3 && lScore <= 3) {{
+      sinal = '🟡 AVALIAR TROCA';
+      sinalClass = 'color: var(--yellow)';
+      const motivos = [];
+      if (gScore <= 3) motivos.push('Graham ' + gScore + '/6');
+      if (lScore <= 3) motivos.push('Lynch ' + lScore + '/6');
+      if (margem < -0.3) motivos.push('Cara: margem ' + (margem * 100).toFixed(0) + '%');
+      sinalMotivo = motivos.join(' | ');
+    }}
+    // REALIZAR LUCRO: subiu muito + score caindo
+    else {{
+      sinal = '🟢 MANTER';
+      sinalClass = 'color: var(--green)';
+      sinalMotivo = 'Graham ' + gScore + '/6 | Lynch ' + lScore + '/6';
+    }}
+    
+    // Override: se lucro > 30% e score ruim, sugerir realizar
+    if (pct > 30 && gScore <= 3 && lScore <= 3) {{
+      sinal = '🔴 REALIZAR LUCRO';
+      sinalClass = 'color: var(--red)';
+      sinalMotivo = 'Lucro +' + pct.toFixed(0) + '% | Scores baixos — trocar por ação melhor';
+    }}
     
     return `
-      <div class="carteira-card">
+      <div class="carteira-card" style="grid-template-columns: 1fr 1fr 1fr 1fr 1fr;">
         <div>
-          <strong style="color: var(--blue); font-size: 1.1em;">${{pos.ticker}}</strong><br>
-          <span style="color: var(--text2); font-size: 0.85em;">${{pos.quantidade}} un</span><br>
-          ${{status}}
+          <strong style="color: var(--blue); font-size: 1.1em;">${{pos.ticker}}</strong> ${{isUS(pos.ticker) ? '🇺🇸' : '🇧🇷'}}<br>
+          <span style="color: var(--text2); font-size: 0.85em;">${{pos.quantidade}} un</span>
         </div>
         <div class="carteira-valor">
-          R$ ${{fmt(valorInvestido)}}<br>
-          <span style="color: var(--text2); font-size: 0.85em;">@R$ ${{fmt(pos.preco_medio)}}</span>
+          ${{moeda(pos.ticker)}} ${{fmt(valorInvestido)}}<br>
+          <span style="color: var(--text2); font-size: 0.85em;">@${{moeda(pos.ticker)}} ${{fmt(pos.preco_medio)}}</span>
         </div>
         <div class="carteira-valor">
-          R$ ${{fmt(valorAtual)}}<br>
-          <span style="color: var(--text2); font-size: 0.85em;">@R$ ${{fmt(stock.cotacao)}}</span>
+          ${{moeda(pos.ticker)}} ${{fmt(valorAtual)}}<br>
+          <span style="color: var(--text2); font-size: 0.85em;">@${{moeda(pos.ticker)}} ${{fmt(stock.cotacao)}}</span>
         </div>
         <div class="carteira-gain ${{ganho >= 0 ? 'positive' : 'negative'}}">
           ${{(ganho >= 0 ? '+' : '')}}${{pct.toFixed(2)}}%<br>
-          R$ ${{fmt(ganho)}}
+          ${{moeda(pos.ticker)}} ${{fmt(ganho)}}
+        </div>
+        <div style="text-align: center;">
+          <div style="font-weight: 700; font-size: 0.9em; ${{sinalClass}}">${{sinal}}</div>
+          <div style="color: var(--text2); font-size: 0.72em; margin-top: 4px;">${{sinalMotivo}}</div>
         </div>
       </div>
     `;
@@ -825,25 +919,43 @@ function renderCarteira() {{
   
   document.getElementById('carteira-body').innerHTML = header + posicoes;
   
-  // Cenarios
+  // Cenarios com patrimônio total em BRL
   const cenarios_html = `
+    <div style="text-align: center; margin-bottom: 16px; padding: 12px; background: #0d1117; border-radius: 8px; border: 1px solid var(--border);">
+      <div style="font-size: 0.85em; color: var(--text2);">Patrim\\u00f4nio Total (USD/BRL ${{fmt(USD_BRL, 2)}})</div>
+      <div style="font-size: 1.6em; font-weight: 700; color: var(--blue); margin-top: 4px;">R$ ${{fmt(totalPatrimonioBRL)}}</div>
+    </div>
     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
       <div style="background: #0d1117; padding: 12px; border-radius: 8px; border-left: 3px solid var(--red);">
         <div style="font-weight: 600; margin-bottom: 8px;">Pessimista (-10%)</div>
-        <div style="color: var(--red); font-size: 1.2em; font-weight: 700;">R$ ${{fmt(totalAtual * 0.9)}}</div>
-        <div style="color: var(--text2); font-size: 0.85em; margin-top: 4px;">-10% = ${{fmt(totalAtual * -0.1)}}</div>
+        <div style="color: var(--red); font-size: 1.2em; font-weight: 700;">R$ ${{fmt(totalPatrimonioBRL * 0.9)}}</div>
+        <div style="color: var(--text2); font-size: 0.85em; margin-top: 4px;">-R$ ${{fmt(totalPatrimonioBRL * 0.1)}}</div>
       </div>
       <div style="background: #0d1117; padding: 12px; border-radius: 8px; border-left: 3px solid var(--yellow);">
         <div style="font-weight: 600; margin-bottom: 8px;">Base (0%)</div>
-        <div style="color: var(--text2); font-size: 1.2em; font-weight: 700;">R$ ${{fmt(totalAtual)}}</div>
-        <div style="color: var(--text2); font-size: 0.85em; margin-top: 4px;">Preco atual</div>
+        <div style="color: var(--text2); font-size: 1.2em; font-weight: 700;">R$ ${{fmt(totalPatrimonioBRL)}}</div>
+        <div style="color: var(--text2); font-size: 0.85em; margin-top: 4px;">Pre\\u00e7o atual</div>
       </div>
       <div style="background: #0d1117; padding: 12px; border-radius: 8px; border-left: 3px solid var(--green);">
         <div style="font-weight: 600; margin-bottom: 8px;">Otimista (+25%)</div>
-        <div style="color: var(--green); font-size: 1.2em; font-weight: 700;">R$ ${{fmt(totalAtual * 1.25)}}</div>
-        <div style="color: var(--text2); font-size: 0.85em; margin-top: 4px;">+25% = ${{fmt(totalAtual * 0.25)}}</div>
+        <div style="color: var(--green); font-size: 1.2em; font-weight: 700;">R$ ${{fmt(totalPatrimonioBRL * 1.25)}}</div>
+        <div style="color: var(--text2); font-size: 0.85em; margin-top: 4px;">+R$ ${{fmt(totalPatrimonioBRL * 0.25)}}</div>
       </div>
     </div>
+    ${{totalUSD_atual > 0 ? `
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+      <div style="background: #0d1117; padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
+        <div style="font-weight: 600; margin-bottom: 4px;">&#127463;&#127479; Brasil</div>
+        <div style="color: var(--text); font-size: 1.1em; font-weight: 700;">R$ ${{fmt(totalBRL_atual)}}</div>
+        <div style="color: var(--text2); font-size: 0.8em;">${{totalBRL_pct >= 0 ? '+' : ''}}${{totalBRL_pct.toFixed(2)}}%</div>
+      </div>
+      <div style="background: #0d1117; padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
+        <div style="font-weight: 600; margin-bottom: 4px;">&#127482;&#127480; EUA</div>
+        <div style="color: var(--text); font-size: 1.1em; font-weight: 700;">US$ ${{fmt(totalUSD_atual)}} <span style="font-size: 0.75em; color: var(--text2);">(R$ ${{fmt(totalUSD_atual * USD_BRL)}})</span></div>
+        <div style="color: var(--text2); font-size: 0.8em;">${{totalUSD_pct >= 0 ? '+' : ''}}${{totalUSD_pct.toFixed(2)}}%</div>
+      </div>
+    </div>
+    ` : ''}}
   `;
   
   document.getElementById('carteira-cenarios').innerHTML = cenarios_html;
@@ -864,8 +976,8 @@ function renderGraham() {{
   document.getElementById('graham-body').innerHTML = GRAHAM_DATA.sort((a, b) => b.score - a.score).map(s => `
     <tr>
       <td class="ticker">${{s.ticker}}</td>
-      <td>R$ ${{fmt(s.cotacao)}}</td>
-      <td>${{s.preco_justo ? 'R$ ' + fmt(s.preco_justo) : 'N/A'}}</td>
+      <td>${{moeda(s.ticker)}} ${{fmt(s.cotacao)}}</td>
+      <td>${{s.preco_justo ? moeda(s.ticker) + ' ' + fmt(s.preco_justo) : 'N/A'}}</td>
       <td class="${{s.margem_seguranca > 0 ? 'positive' : 'negative'}}">${{fmtPct(s.margem_seguranca)}}</td>
       <td>${{fmt(s.pl, 1)}}</td>
       <td>${{fmtPct(s.roe)}}</td>
@@ -889,7 +1001,7 @@ function renderLynch() {{
   document.getElementById('lynch-body').innerHTML = LYNCH_DATA.sort((a, b) => b.score - a.score).map(s => `
     <tr>
       <td class="ticker">${{s.ticker}}</td>
-      <td>R$ ${{fmt(s.cotacao)}}</td>
+      <td>${{moeda(s.ticker)}} ${{fmt(s.cotacao)}}</td>
       <td>${{fmt(s.pl, 1)}}</td>
       <td>${{fmt(s.growth_rate, 1)}}%</td>
       <td class="${{s.peg_ratio && s.peg_ratio < 1 ? 'positive' : 'negative'}}">${{s.peg_ratio ? fmt(s.peg_ratio, 2) : 'N/A'}}</td>
@@ -961,7 +1073,7 @@ function renderTopBuy() {{
           #${{i + 1}} — ${{s.strength.toFixed(1)}} pts
         </div>
         <div style="font-size: 1.4em; font-weight: 700; color: var(--blue); margin-bottom: 4px;">${{s.ticker}}</div>
-        <div style="color: var(--text2); font-size: 0.85em; margin-bottom: 12px;">Cotacao: R$ ${{fmt(s.cotacao)}}</div>
+        <div style="color: var(--text2); font-size: 0.85em; margin-bottom: 12px;">Cotacao: ${{moeda(s.ticker)}} ${{fmt(s.cotacao)}}</div>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
           <div style="background: #0d1117; padding: 8px; border-radius: 8px; text-align: center;">
@@ -997,7 +1109,7 @@ function renderTopBuy() {{
       ${{singles.slice(0, 15).map(s => `
         <tr>
           <td class="ticker">${{s.ticker}}</td>
-          <td>R$ ${{fmt(s.cotacao)}}</td>
+          <td>${{moeda(s.ticker)}} ${{fmt(s.cotacao)}}</td>
           <td>
             ${{s.tipo === 'graham'
               ? '<span style="background: rgba(88,166,255,0.2); color: var(--blue); padding: 3px 8px; border-radius: 6px; font-size: 0.8em;">Graham</span>'
@@ -1094,7 +1206,7 @@ function renderPro() {{
           ${{s.lowLiq ? '<span class="liquidity-badge">⚠️ Liq.</span>' : ''}}
         </span>
         <span class="status ${{s.nivelClass}}">${{s.nivel}}</span>
-        <span style="color: var(--text2); font-size: 0.85em;">R$ ${{fmt(s.cotacao)}} ${{s.preco_justo ? '→ Justo R$ ' + fmt(s.preco_justo) : ''}}</span>
+        <span style="color: var(--text2); font-size: 0.85em;">${{moeda(s.ticker)}} ${{fmt(s.cotacao)}} ${{s.preco_justo ? '→ Justo ' + moeda(s.ticker) + ' ' + fmt(s.preco_justo) : ''}}</span>
         <span style="margin-left: auto; font-size: 0.8em; color: var(--text2);">${{s.forca.toFixed(1)}} pts</span>
       </div>
       
@@ -1182,7 +1294,7 @@ function renderLynchPro() {{
           ${{s.lowLiq ? '<span class="liquidity-badge">⚠️ Liq.</span>' : ''}}
         </span>
         <span class="status ${{s.nivelClass}}">${{s.nivel}}</span>
-        <span style="color: var(--text2); font-size: 0.85em;">R$ ${{fmt(s.cotacao)}}</span>
+        <span style="color: var(--text2); font-size: 0.85em;">${{moeda(s.ticker)}} ${{fmt(s.cotacao)}}</span>
         <span style="margin-left: auto; font-size: 0.8em; color: var(--text2);">${{s.forca.toFixed(1)}} pts</span>
       </div>
       

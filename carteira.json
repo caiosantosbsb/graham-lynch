@@ -2,35 +2,84 @@
   "carteira": [
     {
       "id": 1,
-      "ticker": "NVDA",
-      "quantidade": 10,
-      "preco_medio": 200.00,
-      "data_compra": "2026-05-15",
-      "descricao": "Crescimento - Tech americana"
+      "ticker": "PETR4",
+      "quantidade": 333,
+      "preco_medio": 33.40,
+      "data_compra": "2025-10-01",
+      "descricao": "Valor + Dividendos",
+      "corretora": "Ion"
     },
     {
       "id": 2,
-      "ticker": "PETR4",
-      "quantidade": 100,
-      "preco_medio": 40.50,
-      "data_compra": "2026-05-20",
-      "descricao": "Valor + Dividendos"
+      "ticker": "BBAS3",
+      "quantidade": 427,
+      "preco_medio": 20.48,
+      "data_compra": "2025-10-01",
+      "descricao": "Banco estatal - Valor",
+      "corretora": "Ion"
     },
     {
       "id": 3,
-      "ticker": "SUZB3",
+      "ticker": "TAEE11",
       "quantidade": 100,
-      "preco_medio": 40.00,
-      "data_compra": "2026-06-01",
-      "descricao": "Celulose - Crescimento"
+      "preco_medio": 36.89,
+      "data_compra": "2025-10-01",
+      "descricao": "Energia - Dividendos",
+      "corretora": "Ion"
     },
     {
       "id": 4,
+      "ticker": "SUZB3",
+      "quantidade": 133,
+      "preco_medio": 40.66,
+      "data_compra": "2026-06-01",
+      "descricao": "Celulose - Crescimento",
+      "corretora": "Ion"
+    },
+    {
+      "id": 5,
+      "ticker": "CPFE3",
+      "quantidade": 61,
+      "preco_medio": 40.78,
+      "data_compra": "2025-10-01",
+      "descricao": "Energia - Dividendos",
+      "corretora": "Ion"
+    },
+    {
+      "id": 6,
+      "ticker": "SAPR11",
+      "quantidade": 55,
+      "preco_medio": 37.16,
+      "data_compra": "2025-10-01",
+      "descricao": "Saneamento - Valor",
+      "corretora": "Ion"
+    },
+    {
+      "id": 7,
       "ticker": "BNBR3",
-      "quantidade": 50,
-      "preco_medio": 100.00,
-      "data_compra": "2026-04-10",
-      "descricao": "Renda passiva - Dividendos altos"
+      "quantidade": 10,
+      "preco_medio": 109.73,
+      "data_compra": "2025-12-01",
+      "descricao": "Renda passiva - Dividendos",
+      "corretora": "Ion"
+    },
+    {
+      "id": 8,
+      "ticker": "NVDA",
+      "quantidade": 4.58,
+      "preco_medio": 203.46,
+      "data_compra": "2026-05-15",
+      "descricao": "Crescimento - Tech/AI",
+      "corretora": "Avenue"
+    },
+    {
+      "id": 9,
+      "ticker": "GOOGL",
+      "quantidade": 1,
+      "preco_medio": 347.36,
+      "data_compra": "2026-06-01",
+      "descricao": "Crescimento - Tech/AI",
+      "corretora": "Avenue"
     }
   ],
   "meta_alocacao": {
@@ -38,5 +87,5 @@
     "renda": 0.30,
     "seguranca": 0.10
   },
-  "notas": "Adicione suas compras aqui no formato acima. Quantity pode ser fracionária."
+  "notas": "BR: dados Ion (11-jun-2026), PM = valor_investido/quantidade. US: NVDA 4.58@$203.46 + GOOGL 1@$347.36 via Avenue."
 }

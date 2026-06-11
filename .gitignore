@@ -8,6 +8,9 @@ venv/
 # Output (gerado pelo CI)
 graham_dashboard.html
 
+# Dados pessoais
+*.xlsx
+
 # OS
 .DS_Store
 Thumbs.db
