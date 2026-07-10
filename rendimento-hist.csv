@@ -1,0 +1,43 @@
+﻿Data referência;Período;Início período;Fim período;Família de produto;Produto;Rendimento bruto (R$);Rentabilidade bruta (%);Saldo bruto (R$);Resgatado;Data resgate
+07-jul-2026;No ano;02-jan-2026;07-jul-2026;Renda Variável;Total da família no período;514,27;-;36.548,83;N;-
+07-jul-2026;No ano;02-jan-2026;07-jul-2026;Renda Variável;BRASIL      ON      NM;-444,68;-9,32%;8.424,71;N;-
+07-jul-2026;No ano;02-jan-2026;07-jul-2026;Renda Variável;NORD BRASIL ON;21,69;1,50%;1.079,50;N;-
+07-jul-2026;No ano;15-jun-2026;15-jun-2026;Renda Variável;CEMIG       ON      N1;-0,70;-0,04%;0,00;S;15-jun-2026
+07-jul-2026;No ano;02-jan-2026;07-jul-2026;Renda Variável;CPFL ENERGIAON      NM;-251,23;-8,23%;2.771,84;N;-
+07-jul-2026;No ano;02-jan-2026;07-jul-2026;Renda Variável;PETROBRAS   PN      N2;1.400,49;27,81%;12.800,52;N;-
+07-jul-2026;No ano;02-jan-2026;07-jul-2026;Renda Variável;SANEPAR     UNT     N2;-189,62;-8,72%;1.989,90;N;-
+07-jul-2026;No ano;01-jun-2026;07-jul-2026;Renda Variável;SUZANO S.A. ON      NM;2,56;0,98%;5.442,36;N;-
+07-jul-2026;No ano;02-jan-2026;07-jul-2026;Renda Variável;TAESA       UNT     N2;-24,24;-0,63%;4.040,00;N;-
+07-jul-2026;Mês atual;01-jul-2026;07-jul-2026;Renda Variável;Total da família no período;325,23;-;36.548,83;N;-
+07-jul-2026;Mês atual;01-jul-2026;07-jul-2026;Renda Variável;BRASIL      ON      NM;-76,86;-0,90%;8.424,71;N;-
+07-jul-2026;Mês atual;01-jul-2026;07-jul-2026;Renda Variável;NORD BRASIL ON;-20,50;-1,86%;1.079,50;N;-
+07-jul-2026;Mês atual;01-jul-2026;07-jul-2026;Renda Variável;CPFL ENERGIAON      NM;40,26;1,47%;2.771,84;N;-
+07-jul-2026;Mês atual;01-jul-2026;07-jul-2026;Renda Variável;PETROBRAS   PN      N2;213,12;1,69%;12.800,52;N;-
+07-jul-2026;Mês atual;01-jul-2026;07-jul-2026;Renda Variável;SANEPAR     UNT     N2;-48,40;-2,37%;1.989,90;N;-
+07-jul-2026;Mês atual;01-jul-2026;07-jul-2026;Renda Variável;SUZANO S.A. ON      NM;155,61;2,94%;5.442,36;N;-
+07-jul-2026;Mês atual;01-jul-2026;07-jul-2026;Renda Variável;TAESA       UNT     N2;62,00;1,56%;4.040,00;N;-
+07-jul-2026;Mês anterior;01-jun-2026;30-jun-2026;Renda Variável;Total da família no período;-1.319,19;-;36.223,60;N;-
+07-jul-2026;Mês anterior;01-jun-2026;30-jun-2026;Renda Variável;BRASIL      ON      NM;-67,38;-2,25%;8.501,57;N;-
+07-jul-2026;Mês anterior;01-jun-2026;30-jun-2026;Renda Variável;NORD BRASIL ON;30,00;2,80%;1.100,00;N;-
+07-jul-2026;Mês anterior;15-jun-2026;15-jun-2026;Renda Variável;CEMIG       ON      N1;-0,70;-0,04%;0,00;S;15-jun-2026
+07-jul-2026;Mês anterior;01-jun-2026;30-jun-2026;Renda Variável;CPFL ENERGIAON      NM;84,79;3,20%;2.731,58;N;-
+07-jul-2026;Mês anterior;01-jun-2026;30-jun-2026;Renda Variável;PETROBRAS   PN      N2;-1.226,45;-9,01%;12.587,40;N;-
+07-jul-2026;Mês anterior;01-jun-2026;30-jun-2026;Renda Variável;SANEPAR     UNT     N2;-48,40;-2,32%;2.038,30;N;-
+07-jul-2026;Mês anterior;01-jun-2026;30-jun-2026;Renda Variável;SUZANO S.A. ON      NM;-153,05;-1,91%;5.286,75;N;-
+07-jul-2026;Mês anterior;01-jun-2026;30-jun-2026;Renda Variável;TAESA       UNT     N2;62,00;1,58%;3.978,00;N;-
+07-jul-2026;Ano anterior;01-out-2025;31-dez-2025;Renda Variável;Total da família no período;2.046,92;-;22.012,99;N;-
+07-jul-2026;Ano anterior;01-out-2025;31-dez-2025;Renda Variável;BRASIL      ON      NM;244,02;6,30%;4.953,92;N;-
+07-jul-2026;Ano anterior;01-dez-2025;31-dez-2025;Renda Variável;NORD BRASIL ON;2,91;0,27%;1.100,20;N;-
+07-jul-2026;Ano anterior;01-out-2025;31-dez-2025;Renda Variável;CPFL ENERGIAON      NM;763,05;30,67%;3.250,69;N;-
+07-jul-2026;Ano anterior;01-out-2025;31-dez-2025;Renda Variável;PETROBRAS   PN      N2;255,07;4,39%;6.287,28;N;-
+07-jul-2026;Ano anterior;01-dez-2025;31-dez-2025;Renda Variável;SANEPAR     UNT     N2;166,07;8,13%;2.209,90;N;-
+07-jul-2026;Ano anterior;01-out-2025;31-dez-2025;Renda Variável;TAESA       UNT     N2;615,80;16,53%;4.211,00;N;-
+07-jul-2026;Últimos 12 meses;01-out-2025;07-jul-2026;Renda Variável;Total da família no período;2.561,19;-;36.548,83;N;-
+07-jul-2026;Últimos 12 meses;01-out-2025;07-jul-2026;Renda Variável;BRASIL      ON      NM;-200,66;-3,60%;8.424,71;N;-
+07-jul-2026;Últimos 12 meses;01-dez-2025;07-jul-2026;Renda Variável;NORD BRASIL ON;24,60;1,77%;1.079,50;N;-
+07-jul-2026;Últimos 12 meses;15-jun-2026;15-jun-2026;Renda Variável;CEMIG       ON      N1;-0,70;-0,04%;0,00;S;15-jun-2026
+07-jul-2026;Últimos 12 meses;01-out-2025;07-jul-2026;Renda Variável;CPFL ENERGIAON      NM;511,82;19,92%;2.771,84;N;-
+07-jul-2026;Últimos 12 meses;01-out-2025;07-jul-2026;Renda Variável;PETROBRAS   PN      N2;1.655,56;33,42%;12.800,52;N;-
+07-jul-2026;Últimos 12 meses;01-dez-2025;07-jul-2026;Renda Variável;SANEPAR     UNT     N2;-23,55;-1,30%;1.989,90;N;-
+07-jul-2026;Últimos 12 meses;01-jun-2026;07-jul-2026;Renda Variável;SUZANO S.A. ON      NM;2,56;0,98%;5.442,36;N;-
+07-jul-2026;Últimos 12 meses;01-out-2025;07-jul-2026;Renda Variável;TAESA       UNT     N2;591,56;15,79%;4.040,00;N;-

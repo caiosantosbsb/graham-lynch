@@ -3,8 +3,8 @@
     {
       "id": 1,
       "ticker": "PETR4",
-      "quantidade": 333,
-      "preco_medio": 33.40,
+      "quantidade": 324,
+      "preco_medio": 30.91,
       "data_compra": "2025-10-01",
       "descricao": "Valor + Dividendos",
       "corretora": "Ion"
@@ -12,8 +12,8 @@
     {
       "id": 2,
       "ticker": "BBAS3",
-      "quantidade": 427,
-      "preco_medio": 20.48,
+      "quantidade": 409,
+      "preco_medio": 22.72,
       "data_compra": "2025-10-01",
       "descricao": "Banco estatal - Valor",
       "corretora": "Ion"
@@ -21,8 +21,8 @@
     {
       "id": 3,
       "ticker": "TAEE11",
-      "quantidade": 100,
-      "preco_medio": 36.89,
+      "quantidade": 96,
+      "preco_medio": 42.35,
       "data_compra": "2025-10-01",
       "descricao": "Energia - Dividendos",
       "corretora": "Ion"
@@ -30,8 +30,8 @@
     {
       "id": 4,
       "ticker": "SUZB3",
-      "quantidade": 133,
-      "preco_medio": 40.66,
+      "quantidade": 131,
+      "preco_medio": 41.14,
       "data_compra": "2026-06-01",
       "descricao": "Celulose - Crescimento",
       "corretora": "Ion"
@@ -39,8 +39,8 @@
     {
       "id": 5,
       "ticker": "CPFE3",
-      "quantidade": 61,
-      "preco_medio": 40.78,
+      "quantidade": 58,
+      "preco_medio": 52.08,
       "data_compra": "2025-10-01",
       "descricao": "Energia - Dividendos",
       "corretora": "Ion"
@@ -48,8 +48,8 @@
     {
       "id": 6,
       "ticker": "SAPR11",
-      "quantidade": 55,
-      "preco_medio": 37.16,
+      "quantidade": 108,
+      "preco_medio": 39.11,
       "data_compra": "2025-10-01",
       "descricao": "Saneamento - Valor",
       "corretora": "Ion"
@@ -58,7 +58,7 @@
       "id": 7,
       "ticker": "BNBR3",
       "quantidade": 10,
-      "preco_medio": 109.73,
+      "preco_medio": 106.35,
       "data_compra": "2025-12-01",
       "descricao": "Renda passiva - Dividendos",
       "corretora": "Ion"
@@ -80,6 +80,15 @@
       "data_compra": "2026-06-01",
       "descricao": "Crescimento - Tech/AI",
       "corretora": "Avenue"
+    },
+    {
+      "id": 10,
+      "ticker": "CMIG4",
+      "quantidade": 200,
+      "preco_medio": 11.35,
+      "data_compra": "2026-07-10",
+      "descricao": "Energia - TOP BUY",
+      "corretora": "Ion"
     }
   ],
   "meta_alocacao": {
@@ -87,5 +96,5 @@
     "renda": 0.30,
     "seguranca": 0.10
   },
-  "notas": "BR: dados Ion (11-jun-2026), PM = valor_investido/quantidade. US: NVDA 4.58@$203.46 + GOOGL 1@$347.36 via Avenue."
+  "notas": "BR: Ion rendimento-hist (07-jul-2026) + compras 10/jul (CMIG4 200un, SAPR11 +55un). US: NVDA 4.58@$203.46 + GOOGL 1@$347.36 Avenue."
 }
