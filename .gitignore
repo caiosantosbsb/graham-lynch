@@ -10,6 +10,7 @@ graham_dashboard.html
 
 # Dados pessoais
 *.xlsx
+rendimento-hist.csv
 
 # OS
 .DS_Store
