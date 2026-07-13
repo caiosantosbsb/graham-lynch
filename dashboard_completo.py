@@ -276,9 +276,27 @@ def fetch_from_yfinance(ticker: str) -> Optional[dict]:
         ebitda = info.get("ebitda", 0)
         div_ebitda = (total_debt - cash) / ebitda if ebitda and ebitda > 0 else None
         
-        # Growth: earningsGrowth (YoY) ou revenueGrowth
-        growth_raw = info.get("earningsGrowth") or info.get("revenueGrowth")
-        growth_pct = growth_raw * 100 if growth_raw else 5
+        # Growth: calcular CAGR via financials (mais preciso que YoY)
+        growth_pct = 5  # fallback
+        try:
+            fin = stock.financials
+            if fin is not None and not fin.empty and 'Net Income' in fin.index:
+                ni = fin.loc['Net Income'].dropna().sort_index()
+                positives = [(d, float(v)) for d, v in ni.items() if float(v) > 0]
+                if len(positives) >= 2:
+                    oldest_v = positives[0][1]
+                    recent_v = positives[-1][1]
+                    n = len(positives) - 1
+                    cagr = ((recent_v / oldest_v) ** (1 / n) - 1) * 100
+                    growth_pct = cagr
+        except:
+            pass
+        
+        # Fallback para YoY se CAGR falhou
+        if growth_pct == 5:
+            growth_raw = info.get("earningsGrowth") or info.get("revenueGrowth")
+            if growth_raw:
+                growth_pct = growth_raw * 100
         
         return {
             "ticker": ticker,
