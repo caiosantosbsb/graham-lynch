@@ -542,8 +542,35 @@ def calc_lynch(data: dict) -> dict:
 # GERAÇÃO HTML
 # ============================================================
 
-def generate_html(all_data: list[dict]) -> str:
+def generate_html(all_data: list[dict], fonte_counts: dict = None) -> str:
     """Gera HTML com ambas análises + CARTEIRA"""
+    
+    fonte_counts = fonte_counts or {}
+    total_si = fonte_counts.get("StatusInvest", 0)
+    total_yf = fonte_counts.get("yfinance", 0)
+    total_brapi = fonte_counts.get("brapi.dev", 0)
+    total_fontes = total_si + total_yf + total_brapi
+    
+    # Determinar fonte predominante para o banner de confiabilidade
+    if total_fontes == 0:
+        banner_html = ""
+    elif total_si > total_yf:
+        # Execução LOCAL - StatusInvest predominante = dados confiáveis para decisão
+        pct_si = (total_si / total_fontes) * 100
+        banner_html = f'''<div style="background: rgba(63,185,80,0.15); border: 1px solid var(--green); border-radius: 10px;
+                    padding: 12px 20px; margin: 0 0 16px 0; text-align: center; font-size: 0.9em;">
+          ✅ <strong>Dados via StatusInvest (local)</strong> — {pct_si:.0f}% das ações com CAGR 5 anos real.
+          Confiável para decisão de compra.
+        </div>'''
+    else:
+        # Execução GITHUB ACTIONS - yfinance predominante = apenas acompanhamento
+        pct_yf = (total_yf / total_fontes) * 100
+        banner_html = f'''<div style="background: rgba(210,153,34,0.15); border: 1px solid var(--yellow); border-radius: 10px;
+                    padding: 12px 20px; margin: 0 0 16px 0; text-align: center; font-size: 0.9em;">
+          ⚠️ <strong>Dados via yfinance (GitHub Actions)</strong> — {pct_yf:.0f}% das ações (StatusInvest bloqueado em datacenter).
+          Growth é CAGR 3 anos (aproximado). Use apenas para <strong>acompanhar posição</strong>.
+          Para <strong>decisão de compra</strong>, rode <code>executar.bat</code> localmente.
+        </div>'''
     
     graham_json = json.dumps([d["graham"] for d in all_data if d.get("graham")])
     lynch_json = json.dumps([d["lynch"] for d in all_data if d.get("lynch")])
@@ -665,6 +692,8 @@ def generate_html(all_data: list[dict]) -> str:
   <p>Análise de investimentos com dados reais via StatusInvest + brapi</p>
   <p style="margin-top:8px; font-size:0.85em; color:var(--text2)">Atualizado: {timestamp}</p>
 </div>
+
+{banner_html}
 
 <div class="tabs">
   <button class="tab-btn active" onclick="switchTab('carteira')">💼 CARTEIRA</button>
@@ -1034,7 +1063,7 @@ function getStockBuyStrength(ticker) {{
   const lynch = LYNCH_DATA.find(s => s.ticker === ticker);
   
   const gOk = graham && graham.score >= 4;
-  const lOk = lynch && lynch.score >= 3;
+  const lOk = lynch && lynch.score >= 4;
   
   let strength = 0;
   let reasons = [];
@@ -1185,16 +1214,17 @@ function renderPro() {{
       const lowLiq = (s.volume_dia || 0) < MIN_LIQUIDITY;
       if (lowLiq) forca -= 1;
       
-      // Nivel de recomendação
-      if (s.score >= 6 && margem > 0) {{
+      // Nivel de recomendação (score>=6 sempre implica margem>0, ja que Margem>0 e um dos 6 criterios)
+      if (s.score >= 6) {{
         nivel = 'COMPRA FORTE';
         nivelClass = 'status-compra-forte';
-      }} else if (s.score >= 6) {{
+      }} else if (s.score >= 5 && margem > 0) {{
         nivel = 'COMPRAR';
         nivelClass = 'status-comprar';
       }} else if (s.score >= 5) {{
-        nivel = 'COMPRAR';
-        nivelClass = 'status-comprar';
+        // Score alto mas SEM margem de seguranca = acao cara, nao recomendar compra
+        nivel = 'OBSERVAR';
+        nivelClass = 'status-observar';
       }} else {{
         nivel = 'OBSERVAR';
         nivelClass = 'status-observar';
@@ -1348,19 +1378,23 @@ def main():
     print("\n[*] Buscando dados...")
     
     all_data = []
+    fonte_counts = {"StatusInvest": 0, "yfinance": 0, "brapi.dev": 0}
     for ticker in TICKERS:
         data = fetch_stock_data(ticker)
         if data:
             graham = calc_graham(data)
             lynch = calc_lynch(data)
+            fonte = data.get("fonte", "?")
+            fonte_counts[fonte] = fonte_counts.get(fonte, 0) + 1
             all_data.append({
                 "graham": graham,
                 "lynch": lynch
             })
     
     print(f"\n[+] {len(all_data)} ações analisadas")
+    print(f"[+] Fontes: {fonte_counts}")
     
-    html = generate_html(all_data)
+    html = generate_html(all_data, fonte_counts)
     
     output_file = os.path.join(os.path.dirname(__file__), "graham_dashboard.html")
     with open(output_file, "w", encoding="utf-8") as f:
