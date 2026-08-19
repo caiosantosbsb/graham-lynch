@@ -700,8 +700,6 @@ def generate_html(all_data: list[dict], fonte_counts: dict = None) -> str:
   <button class="tab-btn" onclick="switchTab('topbuy')">🏆 TOP BUY</button>
   <button class="tab-btn" onclick="switchTab('pro')">💎 GRAHAM PRO</button>
   <button class="tab-btn" onclick="switchTab('lynchpro')">🚀 LYNCH PRO</button>
-  <button class="tab-btn" onclick="switchTab('graham')">📈 Graham</button>
-  <button class="tab-btn" onclick="switchTab('lynch')">🎯 Lynch</button>
 </div>
 
 <div id="carteira" class="tab-content active">
