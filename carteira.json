@@ -96,5 +96,9 @@
     "renda": 0.30,
     "seguranca": 0.10
   },
+  "dividendos_recebidos": {
+    "historico": [],
+    "nota": "Adicione aqui os dividendos recebidos na conta corrente, ex: {\"mes\": \"2026-07\", \"valor\": 320.50, \"obs\": \"PETR4+TAEE11\"}. O 'Estimado' na aba CARTEIRA e calculado automaticamente pelo Dividend Yield atual x valor investido."
+  },
   "notas": "BR: Ion rendimento-hist (07-jul-2026) + compras 10/jul (CMIG4 200un, SAPR11 +55un). US: NVDA 4.58@$203.46 + GOOGL 1@$347.36 Avenue."
 }

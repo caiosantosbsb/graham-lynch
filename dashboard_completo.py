@@ -585,6 +585,7 @@ def generate_html(all_data: list[dict], fonte_counts: dict = None) -> str:
         carteira_data = {"carteira": [], "meta_alocacao": {}}
     
     carteira_json = json.dumps(carteira_data.get("carteira", []))
+    dividendos_recebidos_json = json.dumps(carteira_data.get("dividendos_recebidos", {}).get("historico", []))
     
     # Lista de tickers BR para identificar moeda no JS
     br_tickers = [t for t in TICKERS if any(c.isdigit() for c in t)]
@@ -708,6 +709,7 @@ def generate_html(all_data: list[dict], fonte_counts: dict = None) -> str:
     <div class="valor" id="carteira-total">R$ 0,00</div>
     <div class="label" id="carteira-rentabilidade" style="font-size: 1.2em; margin-top: 12px;">+0,00% (R$ 0,00)</div>
   </div>
+  <div id="carteira-dividendos" style="margin-top: 16px;"></div>
   <div id="carteira-body"></div>
   <div style="margin-top: 30px; padding: 20px; background: var(--card); border: 1px solid var(--border); border-radius: 12px;">
     <h3 style="margin-bottom: 12px;">Cenarios de Rentabilidade (12 meses)</h3>
@@ -779,6 +781,7 @@ def generate_html(all_data: list[dict], fonte_counts: dict = None) -> str:
 const GRAHAM_DATA = {graham_json};
 const LYNCH_DATA = {lynch_json};
 const CARTEIRA_DATA = {carteira_json};
+const DIVIDENDOS_RECEBIDOS = {dividendos_recebidos_json};
 const USD_BRL = {usd_brl:.4f};
 
 function switchTab(tab) {{
@@ -810,6 +813,7 @@ function renderCarteira() {{
   
   let totalBRL_inv = 0, totalBRL_atual = 0;
   let totalUSD_inv = 0, totalUSD_atual = 0;
+  let dividendoEstimadoAnualBRL = 0;
   
   // Calcular totais separados por moeda
   CARTEIRA_DATA.forEach(pos => {{
@@ -826,6 +830,15 @@ function renderCarteira() {{
       }} else {{
         totalBRL_inv += valorInvestido;
         totalBRL_atual += valorAtual;
+      }}
+      
+      // Estimativa de dividendos anuais (DY atual x valor da posicao), convertido em BRL
+      const lynchStock = LYNCH_DATA.find(s => s.ticker === pos.ticker);
+      const dyRaw = lynchStock ? lynchStock.dividend_yield : null;
+      if (dyRaw) {{
+        const dyPct = dyRaw > 1 ? dyRaw : dyRaw * 100;
+        const valorAtualBRL = isUS(pos.ticker) ? valorAtual * USD_BRL : valorAtual;
+        dividendoEstimadoAnualBRL += valorAtualBRL * (dyPct / 100);
       }}
     }}
   }});
@@ -857,13 +870,43 @@ function renderCarteira() {{
   rentHtml += `<div style="margin-top: 8px; color: ${{totalGanhoBRL >= 0 ? 'var(--green)' : 'var(--red)'}}; font-weight: 700;">Total em R$: ${{totalLabel}}${{totalPctBRL.toFixed(2)}}% (R$ ${{fmt(totalGanhoBRL)}})</div>`;
   document.getElementById('carteira-rentabilidade').innerHTML = rentHtml;
   
+  // Card de dividendos: estimado (via DY atual) vs recebido (informado manualmente em carteira.json)
+  const totalRecebido = (DIVIDENDOS_RECEBIDOS || []).reduce((acc, d) => acc + (d.valor || 0), 0);
+  const dividendoEstimadoMensal = dividendoEstimadoAnualBRL / 12;
+  const historicoHtml = (DIVIDENDOS_RECEBIDOS || []).length > 0
+    ? (DIVIDENDOS_RECEBIDOS || []).slice().reverse().map(d => `
+        <div style="display:flex; justify-content:space-between; padding:4px 0; font-size:0.85em; color:var(--text2);">
+          <span>${{d.mes || '—'}} ${{d.obs ? '(' + d.obs + ')' : ''}}</span>
+          <span style="color:var(--green); font-weight:600;">R$ ${{fmt(d.valor || 0)}}</span>
+        </div>`).join('')
+    : '<div style="font-size:0.85em; color:var(--text2); padding:4px 0;">Nenhum dividendo informado ainda — adicione em carteira.json → dividendos_recebidos.historico</div>';
+  
+  document.getElementById('carteira-dividendos').innerHTML = `
+    <div style="background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 16px 20px;">
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div>
+          <div style="color: var(--text2); font-size: 0.85em;">💰 Dividendo Estimado (12 meses, DY atual)</div>
+          <div style="font-size: 1.3em; font-weight: 700; color: var(--green);">R$ ${{fmt(dividendoEstimadoAnualBRL)}}</div>
+          <div style="color: var(--text2); font-size: 0.8em;">≈ R$ ${{fmt(dividendoEstimadoMensal)}}/mes — projecao, nao garantida</div>
+        </div>
+        <div>
+          <div style="color: var(--text2); font-size: 0.85em;">🏦 Dividendo Recebido (informado por voce)</div>
+          <div style="font-size: 1.3em; font-weight: 700; color: var(--blue);">R$ ${{fmt(totalRecebido)}}</div>
+          <div style="color: var(--text2); font-size: 0.8em;">Cai na conta corrente — atualize manualmente</div>
+        </div>
+      </div>
+      <div style="margin-top: 12px; border-top: 1px solid var(--border); padding-top: 8px;">${{historicoHtml}}</div>
+    </div>
+  `;
+  
   // Renderizar posicoes
   const header = `
-    <div class="carteira-card header" style="grid-template-columns: 1fr 1fr 1fr 1fr 1fr;">
+    <div class="carteira-card header" style="grid-template-columns: 1fr 1fr 1fr 1fr 0.7fr 1fr;">
       <div>Ticker</div>
       <div>Valor Investido</div>
       <div>Valor Atual</div>
       <div>Ganho / Perda</div>
+      <div style="text-align: center;">DY</div>
       <div style="text-align: center;">Sinal</div>
     </div>
   `;
@@ -891,6 +934,15 @@ function renderCarteira() {{
     const lScore = lynch ? lynch.score : 0;
     const margem = graham ? (graham.margem_seguranca || 0) : 0;
     const peg = lynch ? lynch.peg_ratio : null;
+    
+    // DY (Dividend Yield) atual da posicao, com estimativa de dividendo anual
+    const dyRawPos = lynch ? lynch.dividend_yield : null;
+    const dyPctPos = dyRawPos ? (dyRawPos > 1 ? dyRawPos : dyRawPos * 100) : 0;
+    const divAnualPos = valorAtual * (dyPctPos / 100);
+    const dyDisplay = dyPctPos > 0
+      ? `<div style="font-weight: 700; color: var(--green);">${{dyPctPos.toFixed(1)}}%</div>
+         <div style="color: var(--text2); font-size: 0.72em;">${{moeda(pos.ticker)}} ${{fmt(divAnualPos)}}/ano</div>`
+      : `<div style="color: var(--text2);">—</div>`;
     
     // REFORÇAR: score alto + preço ainda bom
     if ((gScore >= 5 && margem > 0) || (lScore >= 5 && peg && peg < 0.8)) {{
@@ -943,7 +995,7 @@ function renderCarteira() {{
     }}
     
     return `
-      <div class="carteira-card" style="grid-template-columns: 1fr 1fr 1fr 1fr 1fr;">
+      <div class="carteira-card" style="grid-template-columns: 1fr 1fr 1fr 1fr 0.7fr 1fr;">
         <div>
           <strong style="color: var(--blue); font-size: 1.1em;">${{pos.ticker}}</strong> ${{isUS(pos.ticker) ? '🇺🇸' : '🇧🇷'}}<br>
           <span style="color: var(--text2); font-size: 0.85em;">${{pos.quantidade}} un</span>
@@ -959,6 +1011,9 @@ function renderCarteira() {{
         <div class="carteira-gain ${{ganho >= 0 ? 'positive' : 'negative'}}">
           ${{(ganho >= 0 ? '+' : '')}}${{pct.toFixed(2)}}%<br>
           ${{moeda(pos.ticker)}} ${{fmt(ganho)}}
+        </div>
+        <div style="text-align: center;">
+          ${{dyDisplay}}
         </div>
         <div style="text-align: center;">
           <div style="font-weight: 700; font-size: 0.9em; ${{sinalClass}}">${{sinal}}</div>
