@@ -610,7 +610,7 @@ def generate_html(all_data: list[dict], fonte_counts: dict = None) -> str:
   :root {{
     --bg: #0d1117; --card: #161b22; --border: #30363d;
     --text: #e6edf3; --text2: #8b949e; --green: #3fb950;
-    --blue: #58a6ff; --yellow: #d29922; --red: #f85149;
+    --blue: #58a6ff; --yellow: #d29922; --red: #f85149; --orange: #f0883e;
   }}
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -929,11 +929,17 @@ function renderCarteira() {{
       sinalMotivo = 'Graham ' + gScore + '/6 | Lynch ' + lScore + '/6';
     }}
     
-    // Override: se lucro > 30% e score ruim, sugerir realizar
+    // Override: se lucro > 30% e score ruim, sugerir realizar (trocar de ativo)
     if (pct > 30 && gScore <= 3 && lScore <= 3) {{
       sinal = '🔴 REALIZAR LUCRO';
       sinalClass = 'color: var(--red)';
       sinalMotivo = 'Lucro +' + pct.toFixed(0) + '% | Scores baixos — trocar por ação melhor';
+    }}
+    // Override: lucro muito alto MAS fundamento ainda forte -> sugerir giro parcial (nao trocar, so realizar uma fatia)
+    else if (pct >= 40 && (gScore >= 5 || lScore >= 5)) {{
+      sinal = '🟠 GIRO PARCIAL';
+      sinalClass = 'color: var(--orange)';
+      sinalMotivo = 'Lucro +' + pct.toFixed(0) + '% com fundamento ainda forte (Graham ' + gScore + '/6, Lynch ' + lScore + '/6) — considere realizar 20-30% da posição e reaportar em ação descontada, mantendo o restante.';
     }}
     
     return `
