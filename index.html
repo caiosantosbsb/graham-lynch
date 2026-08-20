@@ -88,7 +88,7 @@
 <div class="header">
   <h1>📊 Dashboard Graham & Peter Lynch</h1>
   <p>Análise de investimentos com dados reais via StatusInvest + brapi</p>
-  <p style="margin-top:8px; font-size:0.85em; color:var(--text2)">Atualizado: 20/08/2026 12:01</p>
+  <p style="margin-top:8px; font-size:0.85em; color:var(--text2)">Atualizado: 20/08/2026 12:05</p>
 </div>
 
 <div style="background: rgba(210,153,34,0.15); border: 1px solid var(--yellow); border-radius: 10px;
@@ -339,7 +339,7 @@ function renderCarteira() {
       sinalMotivo = 'Lucro +' + pct.toFixed(0) + '% | Scores baixos — trocar por ação melhor';
     }
     // Override: lucro muito alto MAS fundamento ainda forte -> sugerir giro parcial (nao trocar, so realizar uma fatia)
-    else if (pct >= 40 && (gScore >= 5 || lScore >= 5)) {
+    else if (pct >= 30 && (gScore >= 5 || lScore >= 5)) {
       sinal = '🟠 GIRO PARCIAL';
       sinalClass = 'color: var(--orange)';
       sinalMotivo = 'Lucro +' + pct.toFixed(0) + '% com fundamento ainda forte (Graham ' + gScore + '/6, Lynch ' + lScore + '/6) — considere realizar 20-30% da posição e reaportar em ação descontada, mantendo o restante.';
