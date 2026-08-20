@@ -936,7 +936,7 @@ function renderCarteira() {{
       sinalMotivo = 'Lucro +' + pct.toFixed(0) + '% | Scores baixos — trocar por ação melhor';
     }}
     // Override: lucro muito alto MAS fundamento ainda forte -> sugerir giro parcial (nao trocar, so realizar uma fatia)
-    else if (pct >= 40 && (gScore >= 5 || lScore >= 5)) {{
+    else if (pct >= 30 && (gScore >= 5 || lScore >= 5)) {{
       sinal = '🟠 GIRO PARCIAL';
       sinalClass = 'color: var(--orange)';
       sinalMotivo = 'Lucro +' + pct.toFixed(0) + '% com fundamento ainda forte (Graham ' + gScore + '/6, Lynch ' + lScore + '/6) — considere realizar 20-30% da posição e reaportar em ação descontada, mantendo o restante.';
