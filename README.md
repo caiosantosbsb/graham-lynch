@@ -192,9 +192,28 @@ O banner no topo do dashboard indica qual fonte predominou na última geração 
 
 ## ⚙️ GitHub Actions (agora só publica)
 
-- **Quando roda**: automaticamente a cada push que altera `graham_dashboard.html`
+- **Quando roda**: automaticamente a cada push que altera `graham_dashboard.html` (ou o próprio workflow)
 - **O que faz**: copia o HTML já pronto e publica no GitHub Pages (não gera dados, não usa yfinance)
 - **Verificar**: https://github.com/caiosantosbsb/graham-lynch/actions
+
+### ❓ Site online mostra "Dados via yfinance" ou recomendações diferentes da versão local
+
+Isso significa que o **GitHub Pages está servindo um HTML antigo**, gerado pelo workflow anterior
+(que rodava `dashboard_completo.py` no runner e caía no yfinance porque o StatusInvest bloqueia IPs
+de datacenter). Dados diferentes ⇒ LPA/VPA/CAGR diferentes ⇒ preço-teto de Graham e classificação
+de Lynch diferentes. A versão **local é a correta** para decidir.
+
+Para corrigir, basta republicar a partir do `main`:
+
+```powershell
+.\atualizar_e_publicar.bat     # gera HTML novo com StatusInvest, commita e faz push
+```
+
+O push dispara o workflow e o Pages passa a servir o HTML local. Alternativa manual: Actions →
+"📊 Publicar Dashboard Graham & Lynch" → **Run workflow**.
+
+Confira o banner no topo do site: deve estar **verde** com "Dados via StatusInvest (local)".
+Se estiver amarelo, o workflow emite um `warning` avisando que o HTML não veio do StatusInvest.
 
 ---
 

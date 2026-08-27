@@ -11,6 +11,7 @@ on:
     branches: [main]
     paths:
       - 'graham_dashboard.html'
+      - '.github/workflows/update-dashboard.yml'
 
   # Permite disparo manual pelo GitHub, se necessario
   workflow_dispatch:
@@ -28,6 +29,14 @@ jobs:
       - name: 📥 Checkout repositório
         uses: actions/checkout@v4
 
+      - name: 🔎 Verificar origem dos dados do HTML
+        run: |
+          if grep -q "Dados via StatusInvest (local)" graham_dashboard.html; then
+            echo "OK: HTML gerado localmente com dados StatusInvest."
+          else
+            echo "::warning::HTML nao gerado com dados StatusInvest locais - recomendacoes Graham/Lynch podem divergir da versao local. Rode atualizar_e_publicar.bat no PC pessoal."
+          fi
+
       - name: 📁 Preparar para deploy
         run: |
           mkdir -p deploy
@@ -39,4 +48,4 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./deploy
           publish_branch: gh-pages
-          commit_message: "📊 Dashboard publicado - $(date -u '+%Y-%m-%d %H:%M UTC')"
+          commit_message: "📊 Dashboard publicado a partir de ${{ github.sha }}"
