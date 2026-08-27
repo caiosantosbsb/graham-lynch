@@ -1,9 +1,13 @@
 name: 📊 Publicar Dashboard Graham & Lynch
 
-# O dashboard NAO e mais gerado aqui (StatusInvest bloqueia IPs de datacenter).
+# O dashboard NAO e gerado aqui (StatusInvest bloqueia IPs de datacenter).
 # Ele e gerado LOCALMENTE (dados StatusInvest confiaveis) por uma tarefa agendada
 # no Windows que roda dashboard_completo.py e faz commit+push do HTML pronto.
 # Este workflow so publica o arquivo ja commitado no GitHub Pages.
+#
+# Publicacao via deploy nativo do Actions (sem branch gh-pages) para evitar
+# conflito com o job legado "pages build and deployment".
+# Requer: Settings > Pages > Source = "GitHub Actions".
 
 on:
   # Atualiza o Pages sempre que o HTML gerado localmente for enviado ao repo
@@ -17,13 +21,22 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
+
+# Evita deployments concorrentes disputando o mesmo ambiente do Pages
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   deploy-dashboard:
     runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: 📥 Checkout repositório
@@ -42,10 +55,14 @@ jobs:
           mkdir -p deploy
           cp graham_dashboard.html deploy/index.html
 
-      - name: 🚀 Deploy para GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
+      - name: ⚙️ Configurar GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: 📦 Enviar artefato do Pages
+        uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./deploy
-          publish_branch: gh-pages
-          commit_message: "📊 Dashboard publicado a partir de ${{ github.sha }}"
+          path: ./deploy
+
+      - name: 🚀 Deploy para GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
