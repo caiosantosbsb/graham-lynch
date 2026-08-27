@@ -1,20 +1,19 @@
-name: 📊 Atualizar Dashboard Graham & Lynch
+name: 📊 Publicar Dashboard Graham & Lynch
+
+# O dashboard NAO e mais gerado aqui (StatusInvest bloqueia IPs de datacenter).
+# Ele e gerado LOCALMENTE (dados StatusInvest confiaveis) por uma tarefa agendada
+# no Windows que roda dashboard_completo.py e faz commit+push do HTML pronto.
+# Este workflow so publica o arquivo ja commitado no GitHub Pages.
 
 on:
-  # Executa todo dia útil às 22:00 UTC (19:00 BRT, pós-fechamento mercado)
-  schedule:
-    - cron: '0 22 * * 1-5'
-  
-  # Permite execução manual pelo GitHub
-  workflow_dispatch:
-
-  # Também atualiza quando o código muda
+  # Atualiza o Pages sempre que o HTML gerado localmente for enviado ao repo
   push:
     branches: [main]
     paths:
-      - 'dashboard_completo.py'
-      - 'carteira.json'
-      - 'requirements.txt'
+      - 'graham_dashboard.html'
+
+  # Permite disparo manual pelo GitHub, se necessario
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -22,27 +21,12 @@ permissions:
   id-token: write
 
 jobs:
-  generate-dashboard:
+  deploy-dashboard:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: 📥 Checkout repositório
         uses: actions/checkout@v4
-
-      - name: 🐍 Configurar Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
-      - name: 📦 Instalar dependências
-        run: pip install -r requirements.txt
-
-      - name: 🔄 Gerar Dashboard
-        run: python dashboard_completo.py
-        env:
-          PYTHONIOENCODING: utf-8
-          BRAPI_TOKEN: ${{ secrets.BRAPI_TOKEN }}
 
       - name: 📁 Preparar para deploy
         run: |
@@ -55,4 +39,4 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./deploy
           publish_branch: gh-pages
-          commit_message: "📊 Dashboard atualizado - $(date -u '+%Y-%m-%d %H:%M UTC')"
+          commit_message: "📊 Dashboard publicado - $(date -u '+%Y-%m-%d %H:%M UTC')"

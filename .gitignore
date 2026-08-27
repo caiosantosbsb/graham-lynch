@@ -5,12 +5,12 @@ __pycache__/
 venv/
 .env
 
-# Output (gerado pelo CI)
-graham_dashboard.html
-
 # Dados pessoais
 *.xlsx
 rendimento-hist.csv
+
+# Logs
+atualizacao.log
 
 # OS
 .DS_Store
