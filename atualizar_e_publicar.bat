@@ -9,6 +9,15 @@ cd /d "%~dp0"
 
 echo [%date% %time%] Iniciando atualizacao do dashboard... >> atualizacao.log
 
+REM Sincroniza com o repositorio antes de gerar/publicar.
+REM Evita push rejeitado quando o projeto e usado em mais de um PC.
+git pull --rebase origin main >> atualizacao.log 2>&1
+if errorlevel 1 (
+    echo [%date% %time%] ERRO no git pull --rebase. Resolva manualmente e rode de novo. >> atualizacao.log
+    git rebase --abort >> atualizacao.log 2>&1
+    exit /b 1
+)
+
 REM Instala/atualiza dependencias silenciosamente
 pip install -r requirements.txt --quiet >> atualizacao.log 2>&1
 
@@ -25,6 +34,10 @@ git diff --cached --quiet
 if errorlevel 1 (
     git commit -m "Atualizacao automatica do dashboard - %date% %time%" >> atualizacao.log 2>&1
     git push origin main >> atualizacao.log 2>&1
+    if errorlevel 1 (
+        echo [%date% %time%] ERRO no git push. Dashboard gerado mas NAO publicado. >> atualizacao.log
+        exit /b 1
+    )
     echo [%date% %time%] Dashboard atualizado e publicado com sucesso. >> atualizacao.log
 ) else (
     echo [%date% %time%] Nenhuma mudanca detectada, nada a publicar. >> atualizacao.log
