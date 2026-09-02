@@ -17,13 +17,37 @@ call :log "============================================================"
 call :log "[%date% %time%] Iniciando atualizacao do dashboard..."
 
 REM ------------------------------------------------------------
-REM 1) O HTML e um arquivo GERADO. Se houver versao local modificada,
-REM    ela e descartada aqui: seria regenerada logo abaixo de qualquer
-REM    forma, e mante-la so cria conflito no rebase quando o mesmo
-REM    repositorio e usado em dois PCs.
+REM 1) Deixa a arvore limpa. O 'git pull --rebase' recusa rodar com
+REM    qualquer alteracao nao commitada ("cannot pull with rebase:
+REM    You have unstaged changes"), que era a causa das falhas.
+REM
+REM    O HTML e artefato gerado: a versao local e descartada porque
+REM    seria regenerada no passo 4 de qualquer forma, e mante-la so
+REM    cria conflito quando o repositorio e usado em dois PCs.
+REM
+REM    Qualquer outra alteracao (carteira.json, dashboard_completo.py)
+REM    e commitada automaticamente para nunca ser perdida.
 REM ------------------------------------------------------------
-echo [1/5] Limpando HTML gerado local...
+echo [1/5] Preparando arvore de trabalho...
 git checkout -- graham_dashboard.html >nul 2>&1
+git add -u > "%TMP%" 2>&1
+git diff --cached --quiet
+if errorlevel 1 (
+    git commit -m "Alteracoes locais salvas antes da sincronizacao - %date% %time%" > "%TMP%" 2>&1
+    if errorlevel 1 (
+        call :erro "Falha ao commitar as alteracoes locais antes do pull."
+        goto :fim_erro
+    )
+    call :log "Alteracoes locais commitadas antes da sincronizacao."
+)
+call :append
+
+REM Se ainda restar algo nao commitado, o pull vai falhar. Avisa antes.
+git diff --quiet
+if errorlevel 1 (
+    call :erro "Ainda existem alteracoes nao commitadas. Rode 'git status' e resolva manualmente."
+    goto :fim_erro
+)
 
 REM ------------------------------------------------------------
 REM 2) Sincroniza com o repositorio remoto

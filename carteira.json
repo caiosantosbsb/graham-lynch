@@ -3,8 +3,8 @@
     {
       "id": 1,
       "ticker": "PETR4",
-      "quantidade": 324,
-      "preco_medio": 30.91,
+      "quantidade": 333,
+      "preco_medio": 34.88,
       "data_compra": "2025-10-01",
       "descricao": "Valor + Dividendos",
       "corretora": "Ion"
@@ -12,64 +12,64 @@
     {
       "id": 2,
       "ticker": "BBAS3",
-      "quantidade": 409,
-      "preco_medio": 22.72,
+      "quantidade": 427,
+      "preco_medio": 20.48,
       "data_compra": "2025-10-01",
       "descricao": "Banco estatal - Valor",
       "corretora": "Ion"
     },
     {
       "id": 3,
-      "ticker": "TAEE11",
-      "quantidade": 96,
-      "preco_medio": 42.35,
-      "data_compra": "2025-10-01",
-      "descricao": "Energia - Dividendos",
-      "corretora": "Ion"
-    },
-    {
-      "id": 4,
       "ticker": "SUZB3",
-      "quantidade": 131,
-      "preco_medio": 41.14,
+      "quantidade": 183,
+      "preco_medio": 41.07,
       "data_compra": "2026-06-01",
       "descricao": "Celulose - Crescimento",
       "corretora": "Ion"
     },
     {
-      "id": 5,
+      "id": 4,
       "ticker": "CPFE3",
-      "quantidade": 58,
-      "preco_medio": 52.08,
+      "quantidade": 61,
+      "preco_medio": 40.78,
       "data_compra": "2025-10-01",
       "descricao": "Energia - Dividendos",
       "corretora": "Ion"
     },
     {
+      "id": 5,
+      "ticker": "CMIG4",
+      "quantidade": 400,
+      "preco_medio": 11.34,
+      "data_compra": "2026-07-10",
+      "descricao": "Energia - TOP BUY",
+      "corretora": "Ion"
+    },
+    {
       "id": 6,
-      "ticker": "SAPR11",
-      "quantidade": 108,
-      "preco_medio": 39.11,
-      "data_compra": "2025-10-01",
-      "descricao": "Saneamento - Valor",
+      "ticker": "GRND3",
+      "quantidade": 550,
+      "preco_medio": 3.69,
+      "data_compra": "2026-08-01",
+      "descricao": "Consumo - TOP BUY (DY alto e nao recorrente)",
       "corretora": "Ion"
     },
     {
       "id": 7,
       "ticker": "BNBR3",
       "quantidade": 10,
-      "preco_medio": 106.35,
+      "preco_medio": 109.73,
       "data_compra": "2025-12-01",
-      "descricao": "Renda passiva - Dividendos",
+      "descricao": "Renda passiva - VENDA PENDENTE (ordem enviada 02/09, sem execucao por baixa liquidez)",
       "corretora": "Ion"
     },
     {
       "id": 8,
       "ticker": "NVDA",
-      "quantidade": 4.58,
+      "quantidade": 4.58569,
       "preco_medio": 203.46,
       "data_compra": "2026-05-15",
-      "descricao": "Crescimento - Tech/AI",
+      "descricao": "Crescimento - Tech/AI (conferido Avenue 02/09)",
       "corretora": "Avenue"
     },
     {
@@ -78,17 +78,8 @@
       "quantidade": 1,
       "preco_medio": 347.36,
       "data_compra": "2026-06-01",
-      "descricao": "Crescimento - Tech/AI",
+      "descricao": "Crescimento - Tech/AI (conferido Avenue 02/09)",
       "corretora": "Avenue"
-    },
-    {
-      "id": 10,
-      "ticker": "CMIG4",
-      "quantidade": 200,
-      "preco_medio": 11.35,
-      "data_compra": "2026-07-10",
-      "descricao": "Energia - TOP BUY",
-      "corretora": "Ion"
     }
   ],
   "meta_alocacao": {
@@ -100,5 +91,14 @@
     "historico": [],
     "nota": "Adicione aqui os dividendos recebidos na conta corrente, ex: {\"mes\": \"2026-07\", \"valor\": 320.50, \"obs\": \"PETR4+TAEE11\"}. O 'Estimado' na aba CARTEIRA e calculado automaticamente pelo Dividend Yield atual x valor investido."
   },
-  "notas": "BR: Ion rendimento-hist (07-jul-2026) + compras 10/jul (CMIG4 200un, SAPR11 +55un). US: NVDA 4.58@$203.46 + GOOGL 1@$347.36 Avenue."
+  "ordens_pendentes": [
+    {
+      "ticker": "BNBR3",
+      "tipo": "VENDA",
+      "quantidade": 10,
+      "enviada_em": "2026-09-02",
+      "obs": "Sem execucao. Volume medio R$ 9.701/dia. PM 109,73 vs cotacao 109,90 - resultado zero a zero, sem pressa."
+    }
+  ],
+  "notas": "02/09/2026 - posicao Ion e Avenue conferidas contra extrato. Ordem de COMPRA de RENT3 (60 @ 36,42) foi CANCELADA em 02/09: margem de seguranca de apenas 10% e Div/PL 1,27 reprovam no criterio de acoes descontadas. Caixa livre de R$ 6.058 aguardando alocacao. VENDIDAS: TAEE11 (100un por R$ 4.144, +12,33%) e SAPR11 (55un por R$ 1.914, -6,35%), caixa de R$ 6.058. Quantidades corrigidas: PETR4 324->333 (PM 30,91->34,88), SUZB3 131->183, CMIG4 200->400. GRND3 550un @ 3,69 estava fora do json e era a posicao de ~R$ 3.758 que nao fechava. Ordens pendentes em ordens_pendentes. ATENCAO: PETR4 sozinha e 31% da carteira e Commodities 47,7% - proximos aportes devem ir para fora de commodities."
 }
