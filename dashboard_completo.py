@@ -32,6 +32,14 @@ TICKERS = [
     # Brasil - Crescimento & Tech
     "ASAI3", "MULT3", "TIMS3", "RENT3", "MGLU3", "B3SA3",
     "CIEL3", "SQIA3", "PCAR3", "GRND3",
+
+    # Brasil - Ampliacao do universo (set/2026): nomes descontados com lucro
+    # crescendo que ficavam de fora por ausencia na lista, nao por reprovacao.
+    "POMO4", "ABCB4", "BRSR6", "BBDC3", "BBDC4", "ITUB4", "SANB11", "BBSE3",
+    "RECV3", "PRIO3", "KLBN11",
+    "CEAB3", "SBFG3", "CRFB3", "VIVA3", "JBSS3",
+    "ALUP11", "EGIE3", "EQTL3", "CPLE6",
+    "EZTC3", "ALOS3", "HYPE3", "RDOR3", "INTB3", "TOTS3",
     
     # S&P 500 / Nasdaq (via yfinance)
     "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK-B",
@@ -47,27 +55,41 @@ SETORES = {
     "PETR4": "Commodities",          "VALE3": "Commodities",
     "SUZB3": "Commodities",          "GGBR4": "Commodities",
     "GOAU4": "Commodities",          "CSNA3": "Commodities",
+    "RECV3": "Commodities",          "PRIO3": "Commodities",
+    "KLBN11": "Commodities",
 
     "BBAS3": "Bancos & Financeiro",  "BNBR3": "Bancos & Financeiro",
     "ITSA4": "Bancos & Financeiro",  "B3SA3": "Bancos & Financeiro",
     "CIEL3": "Bancos & Financeiro",  "PSSA3": "Bancos & Financeiro",
+    "ABCB4": "Bancos & Financeiro",  "BRSR6": "Bancos & Financeiro",
+    "BBDC3": "Bancos & Financeiro",  "BBDC4": "Bancos & Financeiro",
+    "ITUB4": "Bancos & Financeiro",  "SANB11": "Bancos & Financeiro",
+    "BBSE3": "Bancos & Financeiro",
 
     "CMIG4": "Elétricas/Saneamento", "CPFE3": "Elétricas/Saneamento",
     "TAEE11": "Elétricas/Saneamento","SAPR11": "Elétricas/Saneamento",
     "SBSP3": "Elétricas/Saneamento", "NEOE3": "Elétricas/Saneamento",
     "CPLE3": "Elétricas/Saneamento", "AURE3": "Elétricas/Saneamento",
     "ENBR3": "Elétricas/Saneamento", "AXIA3": "Elétricas/Saneamento",
+    "ALUP11": "Elétricas/Saneamento","EGIE3": "Elétricas/Saneamento",
+    "EQTL3": "Elétricas/Saneamento", "CPLE6": "Elétricas/Saneamento",
 
     "ASAI3": "Consumo & Varejo",     "MGLU3": "Consumo & Varejo",
     "PCAR3": "Consumo & Varejo",     "GRND3": "Consumo & Varejo",
-    "RENT3": "Consumo & Varejo",
+    "RENT3": "Consumo & Varejo",     "CEAB3": "Consumo & Varejo",
+    "SBFG3": "Consumo & Varejo",     "CRFB3": "Consumo & Varejo",
+    "VIVA3": "Consumo & Varejo",     "JBSS3": "Consumo & Varejo",
 
     "WEGE3": "Industrial",           "LEVE3": "Industrial",
     "TUPY3": "Industrial",           "RAPT4": "Industrial",
+    "POMO4": "Industrial",
 
     "VIVT3": "Telecom",              "TIMS3": "Telecom",
     "FLRY3": "Saúde",                "MULT3": "Imobiliário",
-    "SQIA3": "Tech Brasil",
+    "HYPE3": "Saúde",                "RDOR3": "Saúde",
+    "EZTC3": "Imobiliário",          "ALOS3": "Imobiliário",
+    "SQIA3": "Tech Brasil",          "INTB3": "Tech Brasil",
+    "TOTS3": "Tech Brasil",
 
     # EUA
     "AAPL": "Tech EUA",   "MSFT": "Tech EUA",  "GOOGL": "Tech EUA",
@@ -139,9 +161,20 @@ def parse_number(text: Optional[str], percent: bool = False) -> Optional[float]:
     s = s.lstrip("+-").strip("()")
 
     if "," in s:
+        # Vírgula presente: ela é o decimal e o ponto é separador de milhar.
         s = s.replace(".", "").replace(",", ".")
     elif s.count(".") > 1:
+        # Mais de um ponto só existe como separador de milhar (1.234.567).
         s = s.replace(".", "")
+    elif s.count(".") == 1:
+        # Ponto único é ambíguo: "0.65" é decimal, mas "677.542" é milhar no
+        # formato BR. O StatusInvest sempre usa vírgula para decimais, então um
+        # ponto seguido de exatamente 3 dígitos, com parte inteira diferente de
+        # zero, é separador de milhar. Sem isso, VOLUME (DIA) de R$ 677.542 era
+        # lido como R$ 677,54 e a ação virava "liquidez BAIXA" indevidamente.
+        inteiro, _, decimal = s.partition(".")
+        if len(decimal) == 3 and decimal.isdigit() and inteiro.isdigit() and not inteiro.startswith("0"):
+            s = inteiro + decimal
 
     if not s or not any(c.isdigit() for c in s):
         return None
