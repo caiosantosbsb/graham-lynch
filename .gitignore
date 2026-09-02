@@ -11,6 +11,8 @@ rendimento-hist.csv
 
 # Logs
 atualizacao.log
+_passo.tmp
+diagnostico.txt
 
 # OS
 .DS_Store
