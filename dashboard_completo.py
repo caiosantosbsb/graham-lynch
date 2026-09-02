@@ -39,10 +39,123 @@ TICKERS = [
     "NFLX", "INTC", "AMD", "PYPL", "CRM", "ADBE", "CSCO", "IBM"
 ]
 
+# Natureza de cada ação. Usado para medir concentração: duas ações diferentes do mesmo
+# setor sobem e caem juntas, então a diversificação real é medida por setor, não por
+# quantidade de tickers. Ticker sem mapeamento cai em "Outros".
+SETORES = {
+    # Brasil
+    "PETR4": "Commodities",          "VALE3": "Commodities",
+    "SUZB3": "Commodities",          "GGBR4": "Commodities",
+    "GOAU4": "Commodities",          "CSNA3": "Commodities",
+
+    "BBAS3": "Bancos & Financeiro",  "BNBR3": "Bancos & Financeiro",
+    "ITSA4": "Bancos & Financeiro",  "B3SA3": "Bancos & Financeiro",
+    "CIEL3": "Bancos & Financeiro",  "PSSA3": "Bancos & Financeiro",
+
+    "CMIG4": "Elétricas/Saneamento", "CPFE3": "Elétricas/Saneamento",
+    "TAEE11": "Elétricas/Saneamento","SAPR11": "Elétricas/Saneamento",
+    "SBSP3": "Elétricas/Saneamento", "NEOE3": "Elétricas/Saneamento",
+    "CPLE3": "Elétricas/Saneamento", "AURE3": "Elétricas/Saneamento",
+    "ENBR3": "Elétricas/Saneamento", "AXIA3": "Elétricas/Saneamento",
+
+    "ASAI3": "Consumo & Varejo",     "MGLU3": "Consumo & Varejo",
+    "PCAR3": "Consumo & Varejo",     "GRND3": "Consumo & Varejo",
+    "RENT3": "Consumo & Varejo",
+
+    "WEGE3": "Industrial",           "LEVE3": "Industrial",
+    "TUPY3": "Industrial",           "RAPT4": "Industrial",
+
+    "VIVT3": "Telecom",              "TIMS3": "Telecom",
+    "FLRY3": "Saúde",                "MULT3": "Imobiliário",
+    "SQIA3": "Tech Brasil",
+
+    # EUA
+    "AAPL": "Tech EUA",   "MSFT": "Tech EUA",  "GOOGL": "Tech EUA",
+    "NVDA": "Tech EUA",   "META": "Tech EUA",  "AMD": "Tech EUA",
+    "INTC": "Tech EUA",   "CRM": "Tech EUA",   "ADBE": "Tech EUA",
+    "CSCO": "Tech EUA",   "IBM": "Tech EUA",   "NFLX": "Tech EUA",
+    "AMZN": "Tech EUA",
+
+    "JPM": "Financeiro EUA",  "V": "Financeiro EUA",   "MA": "Financeiro EUA",
+    "PYPL": "Financeiro EUA", "BRK-B": "Financeiro EUA",
+
+    "WMT": "Consumo EUA",  "COST": "Consumo EUA",  "MCD": "Consumo EUA",
+    "PG": "Consumo EUA",   "TSLA": "Consumo EUA",
+
+    "JNJ": "Saúde EUA",
+}
+
+# Cor de cada setor nos gráficos/badges do dashboard.
+SETOR_CORES = {
+    "Commodities": "#d29922",           "Bancos & Financeiro": "#58a6ff",
+    "Elétricas/Saneamento": "#3fb950",  "Consumo & Varejo": "#db6d28",
+    "Industrial": "#a371f7",            "Telecom": "#39c5cf",
+    "Saúde": "#f778ba",                 "Imobiliário": "#bf8700",
+    "Tech Brasil": "#7ee787",           "Tech EUA": "#a371f7",
+    "Financeiro EUA": "#58a6ff",        "Consumo EUA": "#db6d28",
+    "Saúde EUA": "#f778ba",             "Outros": "#8b949e",
+}
+
+# Limite de concentração por setor. Acima disso o dashboard emite alerta na carteira.
+LIMITE_SETOR_PCT = 35.0
+
 GRAHAM_CONSTANT = 22.5
 HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
 MIN_LIQUIDITY = 50000  # Volume mínimo em R$ para ser considerado bom (< = baixa liquidez)
 BRAPI_TOKEN = os.environ.get("BRAPI_TOKEN", "")  # Token gratuito de brapi.dev
+
+# Teto de crescimento usado no cálculo do PEG.
+# O próprio Lynch alertava que crescimento acima de ~50% a.a. não se sustenta e não
+# deve ser extrapolado. Sem esse teto, uma empresa saindo de base deprimida (ex: lucro
+# multiplicado por 15 em 4 anos) gera PEG artificialmente baixo e sobe indevidamente no
+# ranking. O valor bruto continua sendo exibido em `growth_rate_bruto`.
+GROWTH_CAP_PEG = 50.0
+
+
+# ============================================================
+# PARSING NUMÉRICO
+# ============================================================
+
+# StatusInvest usa o sinal U+2212 (MINUS SIGN) e traços tipográficos em vez do
+# hífen ASCII. Sem normalizar, o sinal era descartado e um CAGR de -16% virava +16%.
+_MINUS_CHARS = "\u2212\u2013\u2014\u2012\u00ad"
+
+
+def parse_number(text: Optional[str], percent: bool = False) -> Optional[float]:
+    """Converte texto no formato brasileiro ('1.234,56', '-8,3%', '−16,6%') em float.
+
+    Preserva o sinal negativo, inclusive quando codificado como U+2212.
+    Retorna None se o texto não representar um número.
+    """
+    if text is None:
+        return None
+
+    s = str(text).strip()
+    for ch in _MINUS_CHARS:
+        s = s.replace(ch, "-")
+    s = s.replace("\xa0", "").replace(" ", "").replace("%", "").replace("R$", "")
+
+    negativo = s.startswith("-") or (s.startswith("(") and s.endswith(")"))
+    s = s.lstrip("+-").strip("()")
+
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    elif s.count(".") > 1:
+        s = s.replace(".", "")
+
+    if not s or not any(c.isdigit() for c in s):
+        return None
+
+    try:
+        valor = float(s)
+    except ValueError:
+        return None
+
+    if negativo:
+        valor = -valor
+    if percent:
+        pass  # já em pontos percentuais
+    return valor
 
 
 # ============================================================
@@ -80,11 +193,13 @@ def fetch_from_brapi(ticker: str) -> Optional[dict]:
             "div_ebitda": r.get("netDebtByEbitda"),
             "div_pl": r.get("netDebtByEquity"),
             "volume_dia": r.get("tradeVolume"),
-            "growth_rate": r.get("revenuegrowth5year", 5),
+            # Sem default de 5%: se a brapi nao trouxer o dado, fica None.
+            "growth_rate": r.get("revenuegrowth5year"),
+            "growth_fonte": "Revenue growth 5a (proxy)" if r.get("revenuegrowth5year") is not None else None,
             "dividend_yield": r.get("dividendYield"),
             "fonte": "brapi.dev"
         }
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -111,31 +226,39 @@ def fetch_from_statusinvest(ticker: str) -> Optional[dict]:
             title_upper = title_text.upper().strip()
             if title_upper in _found:
                 return _found[title_upper]
-            
+
             for tag in soup.find_all("h3"):
                 if tag.get_text(strip=True).upper() == title_upper:
                     for parent in [tag.parent, tag.parent.parent]:
                         if parent:
                             strong = parent.find("strong")
                             if strong:
-                                val = strong.get_text(strip=True).replace(".", "").replace(",", ".").replace("%", "")
-                                try:
-                                    result = float(val)
+                                result = parse_number(strong.get_text(strip=True))
+                                if result is not None:
                                     _found[title_upper] = result
                                     return result
-                                except:
-                                    pass
             _found[title_upper] = None
             return None
-        
+
+        def extract_by_contains(*fragments, exclude=()):
+            """Procura um <h3> que contenha todos os fragmentos e nenhum dos excluidos."""
+            for tag in soup.find_all("h3"):
+                txt = tag.get_text(strip=True).upper()
+                if all(fr in txt for fr in fragments) and not any(ex in txt for ex in exclude):
+                    for parent in [tag.parent, tag.parent.parent]:
+                        if parent:
+                            strong = parent.find("strong")
+                            if strong:
+                                valor = parse_number(strong.get_text(strip=True))
+                                if valor is not None:
+                                    return valor
+            return None
+
         cotacao = extract_value("VALOR ATUAL")
         if cotacao is None:
             cotacao_el = soup.find("strong", class_="value")
             if cotacao_el:
-                try:
-                    cotacao = float(cotacao_el.get_text(strip=True).replace(".", "").replace(",", "."))
-                except:
-                    pass
+                cotacao = parse_number(cotacao_el.get_text(strip=True))
         
         if not cotacao:
             return None
@@ -147,85 +270,22 @@ def fetch_from_statusinvest(ticker: str) -> Optional[dict]:
         # Div. liquida/PL e Div. liquida/EBITDA - tentar variações de nome
         div_pl = extract_value("DIV. LIQUIDA/PL")
         if div_pl is None:
-            div_pl = extract_value("Div. liquida/PL")
-        if div_pl is None:
-            # Busca flexível: procurar por conteúdo parcial
-            for tag in soup.find_all("h3"):
-                txt = tag.get_text(strip=True).upper()
-                if "QUIDA/PL" in txt and "EBITDA" not in txt:
-                    for parent in [tag.parent, tag.parent.parent]:
-                        if parent:
-                            strong = parent.find("strong")
-                            if strong:
-                                val = strong.get_text(strip=True).replace(".", "").replace(",", ".").replace("%", "")
-                                try:
-                                    div_pl = float(val)
-                                except:
-                                    pass
-                                break
-                    if div_pl is not None:
-                        break
-        
+            div_pl = extract_by_contains("QUIDA/PL", exclude=("EBITDA",))
+
         div_ebitda = extract_value("DIV. LIQUIDA/EBITDA")
         if div_ebitda is None:
-            div_ebitda = extract_value("Div. liquida/EBITDA")
-        if div_ebitda is None:
-            for tag in soup.find_all("h3"):
-                txt = tag.get_text(strip=True).upper()
-                if "QUIDA/EBITDA" in txt:
-                    for parent in [tag.parent, tag.parent.parent]:
-                        if parent:
-                            strong = parent.find("strong")
-                            if strong:
-                                val = strong.get_text(strip=True).replace(".", "").replace(",", ".").replace("%", "")
-                                try:
-                                    div_ebitda = float(val)
-                                except:
-                                    pass
-                                break
-                    if div_ebitda is not None:
-                        break
-        
-        # Growth: CAGR Receitas 5 anos ou CAGR Lucros 5 anos
-        growth = None
-        for tag in soup.find_all("h3"):
-            txt = tag.get_text(strip=True).upper()
-            if "CAGR" in txt and "RECEITA" in txt:
-                for parent in [tag.parent, tag.parent.parent]:
-                    if parent:
-                        strong = parent.find("strong")
-                        if strong:
-                            val = strong.get_text(strip=True).replace(".", "").replace(",", ".").replace("%", "").replace("-", "")
-                            try:
-                                growth = float(val)
-                                if growth > 1:
-                                    growth = growth  # já em %
-                                break
-                            except:
-                                pass
-                if growth is not None:
-                    break
-        
-        # Fallback: CAGR Lucros
+            div_ebitda = extract_by_contains("QUIDA/EBITDA")
+
+        # Growth: o PEG de Lynch exige crescimento de LUCRO, nao de receita.
+        # Receita crescente com margem em queda faz a acao parecer barata sem estar.
+        # Por isso o CAGR de LUCROS vem primeiro e o de RECEITAS e apenas fallback.
+        growth = extract_by_contains("CAGR", "LUCRO")
+        growth_fonte = "CAGR Lucros" if growth is not None else None
+
         if growth is None:
-            for tag in soup.find_all("h3"):
-                txt = tag.get_text(strip=True).upper()
-                if "CAGR" in txt and "LUCRO" in txt:
-                    for parent in [tag.parent, tag.parent.parent]:
-                        if parent:
-                            strong = parent.find("strong")
-                            if strong:
-                                val = strong.get_text(strip=True).replace(".", "").replace(",", ".").replace("%", "").replace("-", "")
-                                try:
-                                    growth = float(val)
-                                    if growth > 1:
-                                        growth = growth
-                                    break
-                                except:
-                                    pass
-                    if growth is not None:
-                        break
-        
+            growth = extract_by_contains("CAGR", "RECEITA")
+            growth_fonte = "CAGR Receitas (proxy)" if growth is not None else None
+
         return {
             "ticker": ticker,
             "cotacao": cotacao,
@@ -237,11 +297,15 @@ def fetch_from_statusinvest(ticker: str) -> Optional[dict]:
             "div_ebitda": div_ebitda,
             "div_pl": div_pl,
             "volume_dia": extract_value("VOLUME (DIA)"),
-            "growth_rate": growth if growth else 5,
+            # Sem fallback silencioso: se o scraping falhar, growth fica None e os
+            # criterios de crescimento simplesmente nao pontuam, em vez de fingir 5%.
+            "growth_rate": growth,
+            "growth_fonte": growth_fonte,
             "dividend_yield": extract_value("DIVIDEND YIELD"),
             "fonte": "StatusInvest"
         }
-    except:
+    except Exception as e:
+        print(f"  [!] StatusInvest falhou para {ticker}: {type(e).__name__}: {e}")
         return None
 
 
@@ -277,7 +341,8 @@ def fetch_from_yfinance(ticker: str) -> Optional[dict]:
         div_ebitda = (total_debt - cash) / ebitda if ebitda and ebitda > 0 else None
         
         # Growth: calcular CAGR via financials (mais preciso que YoY)
-        growth_pct = 5  # fallback
+        growth_pct = None
+        growth_fonte = None
         try:
             fin = stock.financials
             if fin is not None and not fin.empty and 'Net Income' in fin.index:
@@ -289,15 +354,22 @@ def fetch_from_yfinance(ticker: str) -> Optional[dict]:
                     n = len(positives) - 1
                     cagr = ((recent_v / oldest_v) ** (1 / n) - 1) * 100
                     growth_pct = cagr
-        except:
+                    growth_fonte = f"CAGR Lucro Liquido ({n + 1} exercicios)"
+        except Exception:
             pass
-        
-        # Fallback para YoY se CAGR falhou
-        if growth_pct == 5:
-            growth_raw = info.get("earningsGrowth") or info.get("revenueGrowth")
+
+        # Fallback para YoY se o CAGR nao pode ser calculado
+        if growth_pct is None:
+            growth_raw = info.get("earningsGrowth")
             if growth_raw:
                 growth_pct = growth_raw * 100
-        
+                growth_fonte = "Earnings growth YoY"
+            else:
+                growth_raw = info.get("revenueGrowth")
+                if growth_raw:
+                    growth_pct = growth_raw * 100
+                    growth_fonte = "Revenue growth YoY (proxy)"
+
         return {
             "ticker": ticker,
             "cotacao": price,
@@ -310,10 +382,11 @@ def fetch_from_yfinance(ticker: str) -> Optional[dict]:
             "div_pl": div_pl,
             "volume_dia": info.get("volume", 0),
             "growth_rate": growth_pct,
+            "growth_fonte": growth_fonte,
             "dividend_yield": info.get("dividendYield", 0),
             "fonte": "yfinance"
         }
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -462,16 +535,25 @@ def calc_graham(data: dict) -> dict:
 def calc_lynch(data: dict) -> dict:
     """Calcula indicadores Peter Lynch"""
     pl = data.get("pl")
-    growth = data.get("growth_rate", 5)  # % ao ano
+    growth = data.get("growth_rate")  # % ao ano (None se nao foi possivel obter)
     roe = data.get("roe", 0)
     div_pl = data.get("div_pl")
     dividend_yield = data.get("dividend_yield", 0)
-    
+
+    # Crescimento acima de GROWTH_CAP_PEG nao se sustenta e nao deve ser extrapolado.
+    # Sem o teto, empresa saindo de base deprimida gera PEG irreal (ex.: NVDA com
+    # CAGR de 200% -> PEG 0,14, o que a jogava para o topo do ranking).
+    growth_bruto = growth
+    growth_limitado = False
+    if growth is not None and growth > GROWTH_CAP_PEG:
+        growth = GROWTH_CAP_PEG
+        growth_limitado = True
+
     peg = pl / growth if pl and pl > 0 and growth and growth > 0 else None
-    
+
     score = 0
     criterios = []
-    
+
     # 1. PEG < 1.0
     if peg and peg < 1.0:
         score += 1
@@ -506,7 +588,6 @@ def calc_lynch(data: dict) -> dict:
         criterios.append("Yield>0 ✓")
     else:
         criterios.append("Yield>0 ✗")
-    
     # 6. Div/PL < 1.5
     if div_pl is not None and div_pl < 1.5:
         score += 1
@@ -528,9 +609,16 @@ def calc_lynch(data: dict) -> dict:
         "cotacao": data.get("cotacao"),
         "pl": pl,
         "growth_rate": growth,
+        "growth_rate_bruto": growth_bruto,
+        "growth_limitado": growth_limitado,
+        "growth_fonte": data.get("growth_fonte"),
+        "growth_ausente": growth_bruto is None,
         "peg_ratio": peg,
         "roe": roe,
         "dividend_yield": dividend_yield,
+        # DY acima de 15% quase sempre e dividendo extraordinario (nao recorrente).
+        # Sinalizado para nao ser usado como projecao de renda futura.
+        "dy_suspeito": bool(dividend_yield and dividend_yield > 15),
         "div_pl": div_pl,
         "score": score,
         "criterios": criterios,
@@ -590,6 +678,9 @@ def generate_html(all_data: list[dict], fonte_counts: dict = None) -> str:
     # Lista de tickers BR para identificar moeda no JS
     br_tickers = [t for t in TICKERS if any(c.isdigit() for c in t)]
     br_tickers_json = json.dumps(br_tickers)
+    
+    setores_json = json.dumps(SETORES, ensure_ascii=False)
+    setor_cores_json = json.dumps(SETOR_CORES, ensure_ascii=False)
     
     # Cotação USD/BRL via AwesomeAPI (gratuita)
     usd_brl = 5.50  # fallback
@@ -711,6 +802,7 @@ def generate_html(all_data: list[dict], fonte_counts: dict = None) -> str:
   </div>
   <div id="carteira-dividendos" style="margin-top: 16px;"></div>
   <div id="carteira-body"></div>
+  <div id="carteira-setores" style="margin-top: 20px;"></div>
   <div style="margin-top: 30px; padding: 20px; background: var(--card); border: 1px solid var(--border); border-radius: 12px;">
     <h3 style="margin-bottom: 12px;">Cenarios de Rentabilidade (12 meses)</h3>
     <div id="carteira-cenarios"></div>
@@ -804,6 +896,12 @@ function fmtPct(v) {{
 const BR_TICKERS = {br_tickers_json};
 const isUS = (ticker) => !BR_TICKERS.includes(ticker);
 const moeda = (ticker) => isUS(ticker) ? 'US$' : 'R$';
+
+const SETORES = {setores_json};
+const SETOR_CORES = {setor_cores_json};
+const LIMITE_SETOR_PCT = {LIMITE_SETOR_PCT};
+const setorDe = (ticker) => SETORES[ticker] || 'Outros';
+const corSetor = (setor) => SETOR_CORES[setor] || '#8b949e';
 
 function renderCarteira() {{
   if (!CARTEIRA_DATA || CARTEIRA_DATA.length === 0) {{
@@ -901,8 +999,9 @@ function renderCarteira() {{
   
   // Renderizar posicoes
   const header = `
-    <div class="carteira-card header" style="grid-template-columns: 1fr 1fr 1fr 1fr 0.7fr 1fr;">
+    <div class="carteira-card header" style="grid-template-columns: 1fr 0.9fr 1fr 1fr 1fr 0.7fr 1fr;">
       <div>Ticker</div>
+      <div>Setor</div>
       <div>Valor Investido</div>
       <div>Valor Atual</div>
       <div>Ganho / Perda</div>
@@ -994,11 +1093,23 @@ function renderCarteira() {{
       sinalMotivo = 'Lucro +' + pct.toFixed(0) + '% com fundamento ainda forte (Graham ' + gScore + '/6, Lynch ' + lScore + '/6) — considere realizar 20-30% da posição e reaportar em ação descontada, mantendo o restante.';
     }}
     
+    // Peso da posicao no patrimonio total (em BRL) e setor a que pertence
+    const valorAtualBRLPos = isUS(pos.ticker) ? valorAtual * USD_BRL : valorAtual;
+    const pesoPct = totalPatrimonioBRL > 0 ? (valorAtualBRLPos / totalPatrimonioBRL) * 100 : 0;
+    const setor = setorDe(pos.ticker);
+    
     return `
-      <div class="carteira-card" style="grid-template-columns: 1fr 1fr 1fr 1fr 0.7fr 1fr;">
+      <div class="carteira-card" style="grid-template-columns: 1fr 0.9fr 1fr 1fr 1fr 0.7fr 1fr;">
         <div>
           <strong style="color: var(--blue); font-size: 1.1em;">${{pos.ticker}}</strong> ${{isUS(pos.ticker) ? '🇺🇸' : '🇧🇷'}}<br>
           <span style="color: var(--text2); font-size: 0.85em;">${{pos.quantidade}} un</span>
+        </div>
+        <div>
+          <span style="display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 0.78em; font-weight: 600;
+                       background: ${{corSetor(setor)}}22; color: ${{corSetor(setor)}}; border: 1px solid ${{corSetor(setor)}}55;">
+            ${{setor}}
+          </span>
+          <div style="color: var(--text2); font-size: 0.75em; margin-top: 4px;">${{pesoPct.toFixed(1)}}% da carteira</div>
         </div>
         <div class="carteira-valor">
           ${{moeda(pos.ticker)}} ${{fmt(valorInvestido)}}<br>
@@ -1024,6 +1135,86 @@ function renderCarteira() {{
   }}).join('');
   
   document.getElementById('carteira-body').innerHTML = header + posicoes;
+  
+  // ---- Exposicao por setor ----
+  // Agrupa as posicoes por natureza do negocio. Duas acoes do mesmo setor sofrem os
+  // mesmos choques, entao a diversificacao real e medida aqui, nao pelo numero de tickers.
+  const porSetor = {{}};
+  CARTEIRA_DATA.forEach(pos => {{
+    const stock = GRAHAM_DATA.find(s => s.ticker === pos.ticker) ||
+                  LYNCH_DATA.find(s => s.ticker === pos.ticker);
+    if (!stock) return;
+    const setor = setorDe(pos.ticker);
+    const fx = isUS(pos.ticker) ? USD_BRL : 1;
+    const invBRL = pos.quantidade * pos.preco_medio * fx;
+    const atuBRL = pos.quantidade * stock.cotacao * fx;
+    if (!porSetor[setor]) porSetor[setor] = {{ investido: 0, atual: 0, tickers: [] }};
+    porSetor[setor].investido += invBRL;
+    porSetor[setor].atual += atuBRL;
+    porSetor[setor].tickers.push(pos.ticker);
+  }});
+  
+  const setoresOrdenados = Object.entries(porSetor)
+    .map(([setor, d]) => ({{
+      setor,
+      investido: d.investido,
+      atual: d.atual,
+      tickers: d.tickers,
+      peso: totalPatrimonioBRL > 0 ? (d.atual / totalPatrimonioBRL) * 100 : 0,
+      pct: d.investido > 0 ? ((d.atual - d.investido) / d.investido) * 100 : 0
+    }}))
+    .sort((a, b) => b.peso - a.peso);
+  
+  const acima = setoresOrdenados.filter(s => s.peso > LIMITE_SETOR_PCT);
+  const alertaSetor = acima.length > 0 ? `
+    <div style="background: rgba(210,153,34,0.12); border: 1px solid var(--yellow); border-radius: 8px;
+                padding: 10px 14px; margin-bottom: 14px; font-size: 0.88em; color: var(--yellow);">
+      ⚠ ${{acima.map(s => s.setor + ' representa ' + s.peso.toFixed(1) + '% da carteira').join(' e ')}}
+      — acima do limite de ${{LIMITE_SETOR_PCT}}%. Um choque nesse setor atinge essa fatia inteira de uma vez.
+    </div>` : `
+    <div style="background: rgba(63,185,80,0.10); border: 1px solid var(--green); border-radius: 8px;
+                padding: 10px 14px; margin-bottom: 14px; font-size: 0.88em; color: var(--green);">
+      ✓ Nenhum setor passa de ${{LIMITE_SETOR_PCT}}% da carteira.
+    </div>`;
+  
+  // Barra empilhada com a composicao setorial
+  const barra = setoresOrdenados.map(s => `
+    <div title="${{s.setor}}: ${{s.peso.toFixed(1)}}%"
+         style="width: ${{s.peso}}%; background: ${{corSetor(s.setor)}}; height: 100%;"></div>
+  `).join('');
+  
+  const linhasSetor = setoresOrdenados.map(s => `
+    <div class="carteira-card" style="grid-template-columns: 1.4fr 0.8fr 1fr 1fr 1.4fr;">
+      <div>
+        <span style="display: inline-block; width: 10px; height: 10px; border-radius: 3px;
+                     background: ${{corSetor(s.setor)}}; margin-right: 8px;"></span>
+        <strong>${{s.setor}}</strong>
+      </div>
+      <div class="carteira-valor" style="font-size: 1.05em;">${{s.peso.toFixed(1)}}%</div>
+      <div class="carteira-valor">R$ ${{fmt(s.atual)}}</div>
+      <div class="carteira-gain ${{s.pct >= 0 ? 'positive' : 'negative'}}">
+        ${{s.pct >= 0 ? '+' : ''}}${{s.pct.toFixed(2)}}%
+      </div>
+      <div style="color: var(--text2); font-size: 0.8em; align-self: center;">${{s.tickers.join(', ')}}</div>
+    </div>
+  `).join('');
+  
+  document.getElementById('carteira-setores').innerHTML = `
+    <h3 style="margin-bottom: 12px;">Exposi\\u00e7\\u00e3o por Setor</h3>
+    ${{alertaSetor}}
+    <div style="display: flex; height: 22px; border-radius: 6px; overflow: hidden;
+                border: 1px solid var(--border); margin-bottom: 14px;">
+      ${{barra}}
+    </div>
+    <div class="carteira-card header" style="grid-template-columns: 1.4fr 0.8fr 1fr 1fr 1.4fr;">
+      <div>Setor</div>
+      <div style="text-align: right;">% Carteira</div>
+      <div style="text-align: right;">Valor Atual</div>
+      <div style="text-align: center;">Resultado</div>
+      <div>Ativos</div>
+    </div>
+    ${{linhasSetor}}
+  `;
   
   // Cenarios com patrimônio total em BRL
   const cenarios_html = `
@@ -1126,6 +1317,7 @@ function getStockBuyStrength(ticker) {{
   
   let strength = 0;
   let reasons = [];
+  let alertas = [];
   
   if (gOk) {{
     strength += graham.score * 1.5;
@@ -1146,10 +1338,39 @@ function getStockBuyStrength(ticker) {{
     strength += 4;
     reasons.unshift('Aprovada por Graham E Lynch');
   }}
+
+  // Liquidez: o campo era calculado mas nunca entrava na nota. Acao de liquidez
+  // baixa pode ficar barata por anos e e dificil de vender sem derrubar o preco.
+  if (graham && graham.liquidez === 'BAIXA') {{
+    strength -= 3;
+    alertas.push('Liquidez BAIXA — limite a posicao (sugestao: max 3% da carteira)');
+  }} else if (graham && graham.liquidez === 'MEDIA') {{
+    strength -= 1;
+    alertas.push('Liquidez MEDIA — evite posicao grande');
+  }}
+
+  // Alertas de qualidade do dado (nao alteram a nota, mas avisam antes da compra)
+  if (lynch && lynch.growth_limitado) {{
+    alertas.push('Crescimento de ' + lynch.growth_rate_bruto.toFixed(0) +
+                 '% limitado a ' + lynch.growth_rate.toFixed(0) + '% no PEG — base deprimida, nao extrapolavel');
+  }}
+  if (lynch && lynch.growth_ausente) {{
+    alertas.push('Sem dado de crescimento — PEG e criterios de growth nao pontuaram');
+  }}
+  if (lynch && lynch.growth_fonte && lynch.growth_fonte.indexOf('proxy') >= 0) {{
+    alertas.push('Crescimento vem de RECEITA, nao de lucro (proxy menos confiavel)');
+  }}
+  if (lynch && lynch.dy_suspeito) {{
+    alertas.push('DY de ' + lynch.dividend_yield.toFixed(1) +
+                 '% provavelmente inclui dividendo extraordinario — nao projete como renda recorrente');
+  }}
+  if (graham && graham.pvpa && graham.pvpa > 5) {{
+    alertas.push('P/VPA de ' + graham.pvpa.toFixed(1) + ' — formula de Graham perde sentido nesse patamar');
+  }}
   
   const tipo = (gOk && lOk) ? 'dual' : gOk ? 'graham' : lOk ? 'lynch' : 'none';
   
-  return {{ strength, reasons, graham, lynch, tipo, gOk, lOk }};
+  return {{ strength, reasons, alertas, graham, lynch, tipo, gOk, lOk }};
 }}
 
 function renderTopBuy() {{
@@ -1196,6 +1417,7 @@ function renderTopBuy() {{
         
         <div style="font-size: 0.85em;">
           ${{s.reasons.map(r => `<div style="color: var(--text2); padding: 2px 0;">✓ ${{r}}</div>`).join('')}}
+          ${{s.alertas.map(a => `<div style="color: var(--yellow); padding: 2px 0;">⚠ ${{a}}</div>`).join('')}}
         </div>
       </div>
     `).join('')}}
@@ -1225,7 +1447,10 @@ function renderTopBuy() {{
           <td>${{s.graham ? '★'.repeat(s.graham.score) + '☆'.repeat(6 - s.graham.score) : '—'}}</td>
           <td>${{s.lynch ? '★'.repeat(s.lynch.score) + '☆'.repeat(6 - s.lynch.score) : '—'}}</td>
           <td style="font-weight: 700;">${{s.strength.toFixed(1)}}</td>
-          <td style="font-size: 0.8em; color: var(--text2);">${{s.reasons.slice(0, 2).join(', ')}}</td>
+          <td style="font-size: 0.8em; color: var(--text2);">
+            ${{s.reasons.slice(0, 2).join(', ')}}
+            ${{s.alertas.length ? '<div style="color: var(--yellow);">⚠ ' + s.alertas[0] + '</div>' : ''}}
+          </td>
         </tr>
       `).join('')}}
       </tbody>
