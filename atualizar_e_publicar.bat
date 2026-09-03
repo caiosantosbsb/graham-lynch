@@ -113,9 +113,39 @@ git diff --cached --quiet
 if errorlevel 1 (
     git commit -m "Atualizacao automatica do dashboard - %date% %time%" > "%STEPLOG%" 2>&1
     call :append
-    git push origin main > "%STEPLOG%" 2>&1
-    if errorlevel 1 (
-        call :erro "Falha no 'git push'. Dashboard foi GERADO mas NAO publicado. Provavel problema de credencial do GitHub nesta maquina."
+
+    REM --------------------------------------------------------
+    REM O push falha por dois motivos MUITO diferentes e a mensagem
+    REM antiga culpava credencial nos dois casos, o que mandava a
+    REM investigacao para o lado errado. Em 03/09 o erro real foi
+    REM "Failed to connect to github.com port 443 after 17576 ms":
+    REM a rede corporativa engoliu a conexao por alguns minutos e
+    REM tres minutos depois o mesmo push funcionava.
+    REM
+    REM Falha de REDE e transitoria: vale repetir.
+    REM Falha de CREDENCIAL e permanente: repetir so perde tempo.
+    REM --------------------------------------------------------
+    set PUSH_OK=
+    for %%N in (1 2 3) do (
+        if not defined PUSH_OK (
+            git push origin main > "%STEPLOG%" 2>&1
+            if not errorlevel 1 (
+                set PUSH_OK=1
+            ) else (
+                findstr /I /C:"Failed to connect" /C:"Could not connect" /C:"Could not resolve" /C:"Connection timed out" /C:"Recv failure" /C:"Send failure" /C:"unable to access" "%STEPLOG%" >nul
+                if errorlevel 1 (
+                    call :erro "Falha no 'git push' por CREDENCIAL/PERMISSAO, nao por rede. Dashboard GERADO mas NAO publicado. Rode 'git push origin main' na mao para reautenticar no Git Credential Manager."
+                    goto :fim_erro
+                ) else (
+                    call :log "[%date% %time%] Push tentativa %%N falhou por REDE. Repetindo em 20s..."
+                    echo  Rede instavel. Tentativa %%N de 3 falhou, repetindo em 20s...
+                    timeout /t 20 /nobreak >nul
+                )
+            )
+        )
+    )
+    if not defined PUSH_OK (
+        call :erro "Falha no 'git push' apos 3 tentativas por problema de REDE (github.com inacessivel na porta 443). Dashboard GERADO e COMMITADO localmente, mas NAO publicado. Nada foi perdido: rode a bat de novo quando a rede estabilizar. Se persistir, e bloqueio do firewall corporativo."
         goto :fim_erro
     )
     call :append

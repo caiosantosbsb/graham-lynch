@@ -60,7 +60,22 @@ echo. >> "%OUT%"
 
 echo [7] CONECTIVIDADE >> "%OUT%"
 powershell -NoProfile -Command ^
-  "foreach($u in @('https://statusinvest.com.br/acoes/petr4','https://github.com')){ try { $r=Invoke-WebRequest -Uri $u -UseBasicParsing -TimeoutSec 20 -Headers @{'User-Agent'='Mozilla/5.0'}; Write-Output ('{0} -> HTTP {1}' -f $u,$r.StatusCode) } catch { Write-Output ('{0} -> FALHOU: {1}' -f $u,$_.Exception.Message) } }" >> "%OUT%" 2>&1
+  "$ErrorActionPreference='SilentlyContinue';" ^
+  "foreach($h in @('github.com','api.github.com','statusinvest.com.br','query1.finance.yahoo.com')){" ^
+  "  $ip=@((Resolve-DnsName $h -Type A).IPAddress)[0];" ^
+  "  $t=Test-NetConnection $h -Port 443 -WarningAction SilentlyContinue;" ^
+  "  Write-Output ('{0,-30} DNS={1,-16} TCP443={2}' -f $h,$(if($ip){$ip}else{'FALHOU'}),$t.TcpTestSucceeded) };" ^
+  "$s=Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings';" ^
+  "Write-Output ('proxy do windows: enable={0} server={1} pac={2}' -f $s.ProxyEnable,$s.ProxyServer,$s.AutoConfigURL);" ^
+  "Write-Output ('proxy do git    : ' + (git config --get http.proxy))" >> "%OUT%" 2>&1
+echo. >> "%OUT%"
+echo   COMO LER ESTA SECAO: >> "%OUT%"
+echo   - github.com com TCP443=False  = bloqueio de REDE (firewall/VPN/instabilidade). >> "%OUT%"
+echo     NAO e problema de credencial. Erro tipico: "Failed to connect ... port 443". >> "%OUT%"
+echo   - github.com com TCP443=True mas push falhando = ai sim e CREDENCIAL. >> "%OUT%"
+echo     Erro tipico: "Authentication failed" ou "403 Forbidden". >> "%OUT%"
+echo   - statusinvest pode recusar teste simples e mesmo assim funcionar no script, >> "%OUT%"
+echo     que envia cabecalhos completos de navegador. So se preocupe se DNS falhar. >> "%OUT%"
 echo. >> "%OUT%"
 
 echo [8] ULTIMAS 40 LINHAS DE atualizacao.log >> "%OUT%"
@@ -76,5 +91,5 @@ echo.
 echo Diagnostico gerado em: %CD%\diagnostico.txt
 echo Abra o arquivo e cole o conteudo no chat.
 echo.
-notepad "%OUT%"
+if not defined SEM_NOTEPAD notepad "%OUT%"
 endlocal
