@@ -478,8 +478,25 @@ def calc_graham(data: dict) -> dict:
     lpa = data.get("lpa")
     vpa = data.get("vpa")
     cotacao = data.get("cotacao")
-    
-    preco_justo = math.sqrt(GRAHAM_CONSTANT * lpa * vpa) if lpa and vpa and lpa > 0 and vpa > 0 else None
+
+    # LPA e VPA precisam estar na mesma escala da cotacao. Quando a fonte reporta
+    # o valor patrimonial de outra classe de acao (caso da BRK-B, cujo VPA vem na
+    # escala da classe A, milhares de vezes maior), o preco justo explode e gera
+    # uma margem de seguranca irreal de ~98%. O P/VPA implicito denuncia isso:
+    # abaixo de 0,05 ou acima de 100 a acao nao esta barata, o dado e que esta
+    # em unidade errada. Nesses casos e melhor nao calcular do que publicar um
+    # numero falso que coloca a acao no topo do ranking.
+    escala_ok = True
+    if cotacao and vpa and vpa > 0:
+        pvpa_implicito = cotacao / vpa
+        if pvpa_implicito < 0.05 or pvpa_implicito > 100:
+            escala_ok = False
+            print(f"  [!] {data.get('ticker')}: VPA {vpa} incompativel com a cotacao "
+                  f"{cotacao} (P/VPA implicito {pvpa_implicito:.4f}). "
+                  f"Preco justo de Graham descartado.")
+
+    preco_justo = (math.sqrt(GRAHAM_CONSTANT * lpa * vpa)
+                   if lpa and vpa and lpa > 0 and vpa > 0 and escala_ok else None)
     margem = ((preco_justo - cotacao) / preco_justo) if preco_justo else None
     
     score = 0
@@ -502,7 +519,9 @@ def calc_graham(data: dict) -> dict:
     
     # 3. P/VPA < 1.5
     pvpa = data.get("pvpa") or (cotacao / vpa if vpa else None)
-    if pvpa and 0 < pvpa < 1.5:
+    # P/VPA abaixo de 0,05 nao existe na pratica: e dado em unidade errada, nao
+    # acao barata. Sem esse piso a BRK-B pontuava com P/VPA de 0,001.
+    if pvpa and 0.05 < pvpa < 1.5:
         score += 1
         criterios.append("P/VPA<1.5 ✓")
     else:

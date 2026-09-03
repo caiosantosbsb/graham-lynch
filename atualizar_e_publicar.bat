@@ -11,6 +11,11 @@ REM ============================================================
 
 cd /d "%~dp0"
 set LOG=atualizacao.log
+
+REM ATENCAO: nao usar a variavel TMP para isso. TMP e uma variavel reservada
+REM do Windows que aponta o diretorio temporario dos processos filhos.
+REM Sobrescreve-la (set TMP=_passo.tmp) faz pip e python receberem um caminho
+REM invalido como diretorio temporario e falharem de forma obscura.
 set STEPLOG=%TEMP%\graham_lynch_passo.tmp
 
 call :log "============================================================"
