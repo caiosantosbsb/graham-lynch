@@ -11,7 +11,7 @@ REM ============================================================
 
 cd /d "%~dp0"
 set LOG=atualizacao.log
-set TMP=_passo.tmp
+set STEPLOG=%TEMP%\graham_lynch_passo.tmp
 
 call :log "============================================================"
 call :log "[%date% %time%] Iniciando atualizacao do dashboard..."
@@ -30,10 +30,10 @@ REM    e commitada automaticamente para nunca ser perdida.
 REM ------------------------------------------------------------
 echo [1/5] Preparando arvore de trabalho...
 git checkout -- graham_dashboard.html >nul 2>&1
-git add -u > "%TMP%" 2>&1
+git add -u > "%STEPLOG%" 2>&1
 git diff --cached --quiet
 if errorlevel 1 (
-    git commit -m "Alteracoes locais salvas antes da sincronizacao - %date% %time%" > "%TMP%" 2>&1
+    git commit -m "Alteracoes locais salvas antes da sincronizacao - %date% %time%" > "%STEPLOG%" 2>&1
     if errorlevel 1 (
         call :erro "Falha ao commitar as alteracoes locais antes do pull."
         goto :fim_erro
@@ -53,7 +53,7 @@ REM ------------------------------------------------------------
 REM 2) Sincroniza com o repositorio remoto
 REM ------------------------------------------------------------
 echo [2/5] Sincronizando com o GitHub...
-git pull --rebase origin main > "%TMP%" 2>&1
+git pull --rebase origin main > "%STEPLOG%" 2>&1
 if errorlevel 1 (
     REM Conflito. Se for so no HTML gerado, resolve sozinho pegando a
     REM versao do remoto - o arquivo e regenerado no passo seguinte.
@@ -62,7 +62,7 @@ if errorlevel 1 (
         if exist ".git\rebase-merge" (
             git checkout --ours graham_dashboard.html >nul 2>&1
             git add graham_dashboard.html >nul 2>&1
-            git -c core.editor=true rebase --continue >> "%TMP%" 2>&1
+            git -c core.editor=true rebase --continue >> "%STEPLOG%" 2>&1
             if not exist ".git\rebase-merge" set RESOLVIDO=1
         )
     )
@@ -79,7 +79,7 @@ REM ------------------------------------------------------------
 REM 3) Dependencias
 REM ------------------------------------------------------------
 echo [3/5] Verificando dependencias...
-pip install -r requirements.txt --quiet > "%TMP%" 2>&1
+pip install -r requirements.txt --quiet > "%STEPLOG%" 2>&1
 if errorlevel 1 (
     call :erro "Falha no 'pip install -r requirements.txt'. Python/pip instalado e no PATH?"
     goto :fim_erro
@@ -91,7 +91,7 @@ REM 4) Gera o dashboard (dados StatusInvest = IP residencial)
 REM ------------------------------------------------------------
 echo [4/5] Gerando dashboard (86 acoes, leva alguns minutos)...
 set PYTHONIOENCODING=utf-8
-python dashboard_completo.py > "%TMP%" 2>&1
+python dashboard_completo.py > "%STEPLOG%" 2>&1
 if errorlevel 1 (
     call :erro "Falha ao executar dashboard_completo.py."
     goto :fim_erro
@@ -102,13 +102,13 @@ REM ------------------------------------------------------------
 REM 5) Publica somente se houve mudanca real
 REM ------------------------------------------------------------
 echo [5/5] Publicando no GitHub...
-git add graham_dashboard.html carteira.json dashboard_completo.py > "%TMP%" 2>&1
+git add graham_dashboard.html carteira.json dashboard_completo.py > "%STEPLOG%" 2>&1
 call :append
 git diff --cached --quiet
 if errorlevel 1 (
-    git commit -m "Atualizacao automatica do dashboard - %date% %time%" > "%TMP%" 2>&1
+    git commit -m "Atualizacao automatica do dashboard - %date% %time%" > "%STEPLOG%" 2>&1
     call :append
-    git push origin main > "%TMP%" 2>&1
+    git push origin main > "%STEPLOG%" 2>&1
     if errorlevel 1 (
         call :erro "Falha no 'git push'. Dashboard foi GERADO mas NAO publicado. Provavel problema de credencial do GitHub nesta maquina."
         goto :fim_erro
@@ -125,7 +125,7 @@ if errorlevel 1 (
 
 call :log "[%date% %time%] Concluido."
 call :log ""
-if exist "%TMP%" del "%TMP%" >nul 2>&1
+if exist "%STEPLOG%" del "%STEPLOG%" >nul 2>&1
 echo.
 timeout /t 15 >nul
 endlocal
@@ -139,7 +139,7 @@ echo %~1 >> "%LOG%"
 exit /b 0
 
 :append
-if exist "%TMP%" type "%TMP%" >> "%LOG%" 2>&1
+if exist "%STEPLOG%" type "%STEPLOG%" >> "%LOG%" 2>&1
 exit /b 0
 
 :erro
@@ -149,7 +149,7 @@ echo  ERRO: %~1
 echo ############################################################
 echo.
 echo  --- saida do comando que falhou ---
-if exist "%TMP%" type "%TMP%"
+if exist "%STEPLOG%" type "%STEPLOG%"
 echo  -----------------------------------
 call :log "[%date% %time%] ERRO: %~1"
 call :append
@@ -162,6 +162,6 @@ echo  Para investigar, rode: diagnostico.bat
 echo.
 echo  (esta janela fecha sozinha em 2 minutos)
 timeout /t 120 >nul
-if exist "%TMP%" del "%TMP%" >nul 2>&1
+if exist "%STEPLOG%" del /q "%STEPLOG%"
 endlocal
 exit /b 1
