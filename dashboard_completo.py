@@ -299,6 +299,15 @@ def fetch_from_statusinvest(ticker: str) -> Optional[dict]:
         roe = extract_value("ROE")
         if roe and abs(roe) > 1:
             roe = roe / 100.0
+
+        # ROIC serve de contraprova do ROE. ROE alto pode vir de rentabilidade
+        # real ou apenas de patrimonio pequeno: a LEVE3 marca ROE de 72% com
+        # ROA de 16%, porque distribuiu o patrimonio em dividendos e o repos com
+        # divida (PL de R$ 1.587 mi para R$ 862 mi, divida de R$ 463 mi para
+        # R$ 1.701 mi). O ROIC nao se deixa inflar por alavancagem.
+        roic = extract_value("ROIC")
+        if roic and abs(roic) > 1:
+            roic = roic / 100.0
         
         # Div. liquida/PL e Div. liquida/EBITDA - tentar variações de nome
         div_pl = extract_value("DIV. LIQUIDA/PL")
@@ -330,6 +339,7 @@ def fetch_from_statusinvest(ticker: str) -> Optional[dict]:
             "pl": extract_value("P/L"),
             "pvpa": extract_value("P/VP"),
             "roe": roe,
+            "roic": roic,
             "div_ebitda": div_ebitda,
             "div_pl": div_pl,
             "volume_dia": extract_value("VOLUME (DIA)"),
@@ -445,6 +455,9 @@ def fetch_from_yfinance(ticker: str) -> Optional[dict]:
             "pl": pe if pe and pe > 0 else None,
             "pvpa": info.get("priceToBook"),
             "roe": info.get("returnOnEquity"),
+            # Contraprova do ROE nas americanas: o yfinance nao traz ROIC, mas o
+            # ROA cumpre o mesmo papel de ignorar o efeito da alavancagem.
+            "roa": info.get("returnOnAssets"),
             "div_ebitda": div_ebitda,
             "div_pl": div_pl,
             "volume_dia": info.get("volume", 0),
@@ -547,32 +560,69 @@ def fetch_profit_history(ticker: str) -> Optional[dict]:
 FONTES_PROXY = ("CAGR Receitas (proxy)", "Revenue growth YoY (proxy)")
 
 
+GAP_JANELAS_PP = 20.0  # divergencia tolerada entre as duas janelas de crescimento
+
+
 def enriquecer_crescimento(data: dict) -> dict:
     """
     Substitui crescimento medido por RECEITA pelo crescimento real de LUCRO,
-    e marca a acao como verificada ou nao.
+    confronta as duas janelas de apuracao disponiveis e marca a acao como
+    verificada ou nao.
 
     Sem isso o dashboard exibia "growth" de receita para 11 das 86 acoes; em 9
     delas o lucro operacional estava estagnado ou encolhendo. Uma acao cujo
     crescimento nao pode ser confirmado no lucro nao passa a valer menos - ela
     apenas deixa de pontuar nos criterios de crescimento, porque nao ha evidencia.
+
+    O confronto de janelas existe porque o CAGR do StatusInvest cobre 5 anos e o
+    do balanco cobre 4, e a diferenca nao e detalhe: a PETR4 aparece com +79,8%
+    na janela de 5 anos (que comeca no petroleo a US$ 20 da pandemia) e -19,5%
+    na de 4 anos. Extrapolar uma recuperacao ja concluida e exatamente o erro que
+    o PEG de Lynch comete com mais frequencia, entao quando as duas discordam
+    prevalece a mais conservadora.
     """
     fonte = data.get("growth_fonte")
     precisa = data.get("growth_rate") is None or fonte in FONTES_PROXY
+    # Quem ja mede pelo balanco nao tem segunda janela para confrontar.
+    ja_do_balanco = bool(fonte and ("balanco" in fonte or "exercicios" in fonte))
+
+    hist = None
+    if precisa or not ja_do_balanco:
+        hist = fetch_profit_history(data["ticker"])
 
     if precisa:
-        hist = fetch_profit_history(data["ticker"])
         if hist:
             data["cagr_receita_proxy"] = (
                 data.get("growth_rate") if fonte in FONTES_PROXY else None
             )
             data.update({k: v for k, v in hist.items() if k != "exercicios"})
             data["growth_exercicios"] = hist["exercicios"]
+    elif hist:
+        # Fonte primaria confiavel: mantem o numero dela, mas confronta janelas.
+        g_fonte, g_bal = data.get("growth_rate"), hist.get("growth_rate")
+
+        # Receita e margens do balanco tem janela igual a do lucro do balanco,
+        # entao servem melhor ao teste de compressao do que os 5 anos da fonte.
+        for campo in ("cagr_receita", "margem_op_inicial", "margem_op_final"):
+            if hist.get(campo) is not None:
+                data[campo] = hist[campo]
+
+        if g_fonte is not None and g_bal is not None:
+            data["growth_rate_fonte_original"] = g_fonte
+            data["growth_rate_balanco"] = g_bal
+            data["growth_fonte_original"] = fonte
+            if abs(g_fonte - g_bal) > GAP_JANELAS_PP:
+                data["growth_janela_conflito"] = True
+                data["growth_rate"] = min(g_fonte, g_bal)
+                data["growth_fonte"] = (
+                    f"{fonte} ({g_fonte:+.0f}%) x balanco ({g_bal:+.0f}%) — usado o menor"
+                )
 
     fonte = data.get("growth_fonte")
     data["growth_verificado"] = bool(
         data.get("growth_rate") is not None and fonte and fonte not in FONTES_PROXY
     )
+    data.setdefault("growth_janela_conflito", False)
 
     # Divergencia: a empresa vende mais e lucra menos. Vale mesmo para quem ja
     # tinha CAGR de lucro na fonte primaria - e o teste que expoe compressao de
@@ -596,8 +646,20 @@ def enriquecer_crescimento(data: dict) -> dict:
     # Gatilho independente: margem operacional encolheu mais de 20% em termos
     # relativos. Pega a AURE3, cujo lucro ainda cresce 5,9% mas cuja margem caiu
     # de 22,4% para 11,1% - metade - porque a receita cresceu muito mais rapido.
+    #
+    # Contraprova: se o lucro cresce mais rapido que a receita no periodo, a
+    # margem esta expandindo e as duas pontas vieram de fontes ou janelas
+    # diferentes. Foi o caso da INTB3 (lucro +12,7% x receita +1,8%) e da ITSA4,
+    # holding cujo resultado vem de equivalencia patrimonial, abaixo da linha
+    # operacional - a "margem operacional" dela nao significa nada.
     mi, mf = data.get("margem_op_inicial"), data.get("margem_op_final")
-    margem_encolheu = bool(mi is not None and mf is not None and mi > 0 and mf < mi * 0.8)
+    lucro_supera_receita = bool(
+        cagr_r is not None and cagr_l is not None and cagr_l > cagr_r
+    )
+    margem_encolheu = bool(
+        mi is not None and mf is not None and mi > 0 and mf < mi * 0.8
+        and not lucro_supera_receita
+    )
 
     data["divergencia_margem"] = lucro_nao_acompanha or margem_encolheu
     return data
@@ -830,11 +892,31 @@ def calc_lynch(data: dict) -> dict:
         criterios.append("Growth>10% ✗" + ("" if verificado else sufixo_nv))
 
     # 4. ROE > 15%
-    if roe and roe > 0.15:
+    # ROE alto pode ser rentabilidade real ou apenas patrimonio pequeno. Mas a
+    # razao ROE/ROIC sozinha NAO serve de criterio: ela e o multiplicador de
+    # alavancagem e fica naturalmente em 3x ou 4x em qualquer empresa com
+    # fornecedores a pagar - a GOOGL marca 3,8x sem ter divida liquida.
+    #
+    # O que caracteriza o ROE artificial e o patrimonio ter sido substituido por
+    # divida. Por isso exige as duas coisas: endividamento liquido maior que o
+    # patrimonio E retorno sobre o capital total muito abaixo do ROE. A LEVE3
+    # atende as duas (Div.Liq/PL 1,14 e ROE 72% contra ROIC 21%) depois de levar
+    # o patrimonio de R$ 1.587 mi para R$ 862 mi distribuindo dividendos.
+    contraprova = data.get("roic")
+    if contraprova is None:
+        contraprova = data.get("roa")
+    roe_alavancado = bool(
+        roe and roe > 0.15
+        and div_pl is not None and div_pl > 1.0
+        and contraprova is not None and contraprova > 0
+        and roe > contraprova * 2.5
+    )
+
+    if roe and roe > 0.15 and not roe_alavancado:
         score += 1
         criterios.append("ROE>15% ✓")
     else:
-        criterios.append("ROE>15% ✗")
+        criterios.append("ROE>15% ✗" + (" (inflado por alavancagem)" if roe_alavancado else ""))
     
     # 5. Yield > 0
     if dividend_yield and dividend_yield > 0:
@@ -878,6 +960,13 @@ def calc_lynch(data: dict) -> dict:
         "divergencia_margem": data.get("divergencia_margem", False),
         "peg_ratio": peg,
         "roe": roe,
+        "roic": data.get("roic"),
+        "roa": data.get("roa"),
+        "roe_alavancado": roe_alavancado,
+        "growth_janela_conflito": data.get("growth_janela_conflito", False),
+        "growth_rate_fonte_original": data.get("growth_rate_fonte_original"),
+        "growth_rate_balanco": data.get("growth_rate_balanco"),
+        "growth_fonte_original": data.get("growth_fonte_original"),
         "dividend_yield": dividend_yield,
         # DY acima de 15% quase sempre e dividendo extraordinario (nao recorrente).
         # Sinalizado para nao ser usado como projecao de renda futura.
@@ -1021,6 +1110,8 @@ def generate_html(all_data: list[dict], fonte_counts: dict = None) -> str:
   .growth-badge.unverified {{ background: rgba(248,81,73,0.25); color: var(--red);
                               border: 1px dashed var(--red); }}
   .growth-badge.squeeze {{ background: rgba(210,153,34,0.25); color: var(--yellow); }}
+  .growth-badge.conflito {{ background: rgba(163,113,247,0.25); color: #a371f7; }}
+  .growth-badge.alavanca {{ background: rgba(219,109,40,0.25); color: var(--orange, #db6d28); }}
   .growth-src {{ display: block; font-size: 0.7em; color: var(--text2); margin-top: 2px; }}
   .pro-table {{ width: 100%; border-collapse: collapse; background: var(--card);
                 border-radius: 12px; overflow: hidden; margin-top: 20px; }}
@@ -1650,6 +1741,20 @@ function getStockBuyStrength(ticker) {{
     }}
     alertas.push(txt);
   }}
+  if (lynch && lynch.growth_janela_conflito) {{
+    alertas.push('JANELAS DISCORDAM — a fonte apura ' +
+                 (lynch.growth_rate_fonte_original >= 0 ? '+' : '') + lynch.growth_rate_fonte_original.toFixed(1) +
+                 '% a.a. em 5 anos e o balanco ' +
+                 (lynch.growth_rate_balanco >= 0 ? '+' : '') + lynch.growth_rate_balanco.toFixed(1) +
+                 '% a.a. em 4. A janela longa costuma incluir base deprimida de 2020/2021. ' +
+                 'O PEG usou o menor dos dois');
+  }}
+  if (lynch && lynch.roe_alavancado) {{
+    const cp = (lynch.roic !== null && lynch.roic !== undefined) ? lynch.roic : lynch.roa;
+    alertas.push('ROE INFLADO POR ALAVANCAGEM — ROE de ' + (lynch.roe*100).toFixed(0) +
+                 '% contra apenas ' + (cp*100).toFixed(0) + '% de retorno sobre o capital total. ' +
+                 'O criterio de ROE nao pontuou');
+  }}
   if (lynch && lynch.dy_suspeito) {{
     alertas.push('DY de ' + lynch.dividend_yield.toFixed(1) +
                  '% provavelmente inclui dividendo extraordinario — nao projete como renda recorrente');
@@ -1683,6 +1788,19 @@ function growthBadges(ticker) {{
       ? (cl >= 0 ? '+' : '') + cl.toFixed(0) + '%' : '?';
     html += '<span class="growth-badge squeeze" title="Receita ' + r + ' a.a. e lucro ' + e +
             ' a.a. — a empresa vende mais e lucra menos.">🔻 Margem ' + r + ' / ' + e + '</span>';
+  }}
+  if (l.growth_janela_conflito) {{
+    const a = (l.growth_rate_fonte_original >= 0 ? '+' : '') + l.growth_rate_fonte_original.toFixed(0) + '%';
+    const b = (l.growth_rate_balanco >= 0 ? '+' : '') + l.growth_rate_balanco.toFixed(0) + '%';
+    html += '<span class="growth-badge conflito" title="A fonte diz ' + a +
+            ' a.a. e o balanco diz ' + b + ' a.a. As janelas de apuracao discordam. ' +
+            'O PEG passou a usar o menor dos dois.">⏳ Janelas ' + a + ' / ' + b + '</span>';
+  }}
+  if (l.roe_alavancado) {{
+    const cp = (l.roic !== null && l.roic !== undefined) ? l.roic : l.roa;
+    html += '<span class="growth-badge alavanca" title="ROE de ' + (l.roe*100).toFixed(0) +
+            '% contra ' + (cp*100).toFixed(0) + '% de retorno sobre o capital. ' +
+            'O retorno vem de alavancagem, nao de eficiencia.">⚖️ ROE alavancado</span>';
   }}
   return html;
 }}
@@ -1949,7 +2067,7 @@ function renderLynchPro() {{
       <div style="display: flex; gap: 12px; margin-top: 10px; flex-wrap: wrap; align-items: center;">
         <span style="background: #0d1117; padding: 8px 16px; border-radius: 8px; font-size: 1.05em;">PEG <strong style="color: ${{s.peg_ratio && s.peg_ratio < 1 ? 'var(--green)' : 'var(--red)'}}; font-size: 1.2em;">${{s.peg_ratio ? s.peg_ratio.toFixed(2) : 'N/A'}}</strong></span>
         <span style="background: #0d1117; padding: 8px 16px; border-radius: 8px; font-size: 1.05em;">Growth <strong style="color: ${{s.growth_verificado === false ? 'var(--red)' : (s.growth_rate > 10 ? 'var(--green)' : 'var(--text)')}}; font-size: 1.2em;">${{s.growth_rate ? s.growth_rate.toFixed(1) + '%' : 'N/A'}}</strong><span class="growth-src">${{s.growth_fonte || 'sem fonte'}}</span></span>
-        <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">ROE <strong style="color: ${{s.roe && s.roe > 0.15 ? 'var(--green)' : 'var(--text)'}}">${{s.roe ? (s.roe * 100).toFixed(0) + '%' : 'N/A'}}</strong></span>
+        <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">ROE <strong style="color: ${{s.roe_alavancado ? 'var(--red)' : (s.roe && s.roe > 0.15 ? 'var(--green)' : 'var(--text)')}}">${{s.roe ? (s.roe * 100).toFixed(0) + '%' : 'N/A'}}</strong>${{(s.roic !== null && s.roic !== undefined) || (s.roa !== null && s.roa !== undefined) ? '<span class="growth-src">cap. total ' + (((s.roic !== null && s.roic !== undefined) ? s.roic : s.roa) * 100).toFixed(0) + '%</span>' : ''}}</span>
         <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">Yield <strong>${{s.dividend_yield ? (s.dividend_yield > 1 ? s.dividend_yield.toFixed(1) : (s.dividend_yield * 100).toFixed(1)) + '%' : 'N/A'}}</strong></span>
         <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">${{'★'.repeat(s.score) + '☆'.repeat(6-s.score)}}</span>
         ${{s.dualOk ? '<span style="font-size: 0.75em; color: var(--green);">Graham ' + '★'.repeat(s.graham.score) + '</span>' : ''}}
