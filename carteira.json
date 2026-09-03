@@ -96,9 +96,26 @@
       "ticker": "BNBR3",
       "tipo": "VENDA",
       "quantidade": 10,
+      "preco_limite": 109.90,
       "enviada_em": "2026-09-02",
-      "obs": "Sem execucao. Volume medio R$ 9.701/dia. PM 109,73 vs cotacao 109,90 - resultado zero a zero, sem pressa."
+      "obs": "Reenviada em 03/09. Ordem de R$ 1.099 = 11,3% do giro diario (R$ 9.701/dia), executavel mas sem pressa. PM 109,73 vs 109,90: resultado zero a zero."
+    },
+    {
+      "ticker": "CEAB3",
+      "tipo": "COMPRA",
+      "quantidade": 420,
+      "preco_limite": 9.39,
+      "enviada_em": "2026-09-03",
+      "obs": "R$ 3.943,80. Graham 6/6, margem 58%, Div.Liq/PL 0,04 (praticamente sem divida). Ressalva: crescimento e CAGR de RECEITA (+14,3%), o StatusInvest nao publica CAGR de lucro para ela."
+    },
+    {
+      "ticker": "POMO4",
+      "tipo": "COMPRA",
+      "quantidade": 800,
+      "preco_limite": 4.60,
+      "enviada_em": "2026-09-03",
+      "obs": "R$ 3.680,00. Graham 6/6 e Lynch 6/6 (unica junto com PETR4). ROE 28,3%, P/L 4,8. CAGR lucro +63,1% acima do CAGR receita +20,3% = ganho de margem operacional. DY de 21,6% e extraordinario, nao recorrente."
     }
   ],
-  "notas": "02/09/2026 - posicao Ion e Avenue conferidas contra extrato. Ordem de COMPRA de RENT3 (60 @ 36,42) foi CANCELADA em 02/09: margem de seguranca de apenas 10% e Div/PL 1,27 reprovam no criterio de acoes descontadas. Caixa livre de R$ 6.058 aguardando alocacao. VENDIDAS: TAEE11 (100un por R$ 4.144, +12,33%) e SAPR11 (55un por R$ 1.914, -6,35%), caixa de R$ 6.058. Quantidades corrigidas: PETR4 324->333 (PM 30,91->34,88), SUZB3 131->183, CMIG4 200->400. GRND3 550un @ 3,69 estava fora do json e era a posicao de ~R$ 3.758 que nao fechava. Ordens pendentes em ordens_pendentes. ATENCAO: PETR4 sozinha e 31% da carteira e Commodities 47,7% - proximos aportes devem ir para fora de commodities."
+  "notas": "03/09/2026 - ordens enviadas: COMPRA CEAB3 420 @ 9,39 e POMO4 800 @ 4,60 (total R$ 7.623,80, coberto por saldo em conta no Itau alem do caixa das vendas), VENDA BNBR3 10 @ 109,90. Atualizar quantidades e precos medios aqui quando confirmarem no extrato. | 02/09/2026 - posicao Ion e Avenue conferidas contra extrato. Ordem de COMPRA de RENT3 (60 @ 36,42) CANCELADA: margem de apenas 10% e Div/PL 1,27 reprovam no criterio de acoes descontadas. VENDIDAS: TAEE11 (100un por R$ 4.144, +12,33%) e SAPR11 (55un por R$ 1.914, -6,35%), caixa de R$ 6.058. Quantidades corrigidas: PETR4 324->333 (PM 30,91->34,88), SUZB3 131->183, CMIG4 200->400. GRND3 550un @ 3,69 estava fora do json e era a posicao de ~R$ 3.758 que nao fechava. ATENCAO: Commodities em 47,7% cai para ~42,9% com as compras acima, ainda acima do limite de 35% - proximos aportes devem evitar o setor."
 }
