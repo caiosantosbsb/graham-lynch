@@ -1016,13 +1016,25 @@ def generate_html(all_data: list[dict], fonte_counts: dict = None) -> str:
     lynch_json = json.dumps([d["lynch"] for d in all_data if d.get("lynch")])
     timestamp = datetime.now().strftime("%d/%m/%Y %H:%M")
     
-    # Carregar carteira se existir
-    carteira_data = {}
-    try:
-        with open("carteira.json", "r", encoding="utf-8") as f:
-            carteira_data = json.load(f)
-    except:
-        carteira_data = {"carteira": [], "meta_alocacao": {}}
+    # Carregar carteira se existir.
+    #
+    # Arquivo ausente e um estado valido (usuario novo, sem posicoes). Arquivo
+    # presente mas quebrado NAO e: em 03/09 uma virgula perdida fez o dashboard
+    # ser publicado com a carteira vazia sem nenhum aviso. Falhar aqui aborta o
+    # .bat antes do commit, que e exatamente o que se quer.
+    carteira_data = {"carteira": [], "meta_alocacao": {}}
+    if os.path.exists("carteira.json"):
+        try:
+            with open("carteira.json", "r", encoding="utf-8") as f:
+                carteira_data = json.load(f)
+        except json.JSONDecodeError as e:
+            raise SystemExit(
+                f"\n[ERRO] carteira.json esta com JSON invalido: {e}\n"
+                f"        Corrija o arquivo antes de publicar. O dashboard NAO foi\n"
+                f"        gerado para evitar ir ao ar com a carteira vazia.\n"
+            )
+        if not carteira_data.get("carteira"):
+            print("  [AVISO] carteira.json existe mas nao tem nenhuma posicao.")
     
     carteira_json = json.dumps(carteira_data.get("carteira", []))
     dividendos_recebidos_json = json.dumps(carteira_data.get("dividendos_recebidos", {}).get("historico", []))
