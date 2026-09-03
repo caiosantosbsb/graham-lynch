@@ -382,20 +382,46 @@ def fetch_from_yfinance(ticker: str) -> Optional[dict]:
         div_ebitda = (total_debt - cash) / ebitda if ebitda and ebitda > 0 else None
         
         # Growth: calcular CAGR via financials (mais preciso que YoY)
+        # Mesmo criterio aplicado as brasileiras: o lucro OPERACIONAL vem antes do
+        # liquido, porque o liquido carrega cambio, impairment e nao-recorrentes.
+        # E o CAGR de receita e sempre calculado, mesmo quando o de lucro existe,
+        # para habilitar o teste de compressao de margem tambem nas americanas.
         growth_pct = None
         growth_fonte = None
+        cagr_ebit = cagr_lucro = cagr_receita = None
+        margem_ini = margem_fim = None
         try:
             fin = stock.financials
-            if fin is not None and not fin.empty and 'Net Income' in fin.index:
-                ni = fin.loc['Net Income'].dropna().sort_index()
-                positives = [(d, float(v)) for d, v in ni.items() if float(v) > 0]
-                if len(positives) >= 2:
-                    oldest_v = positives[0][1]
-                    recent_v = positives[-1][1]
-                    n = len(positives) - 1
-                    cagr = ((recent_v / oldest_v) ** (1 / n) - 1) * 100
-                    growth_pct = cagr
-                    growth_fonte = f"CAGR Lucro Liquido ({n + 1} exercicios)"
+            if fin is not None and not fin.empty:
+                def _serie(nome):
+                    if nome not in fin.index:
+                        return None
+                    s = fin.loc[nome].dropna().sort_index()
+                    return s if len(s) >= 2 else None
+
+                ebit_s = _serie("Operating Income")
+                lucro_s = _serie("Net Income")
+                receita_s = _serie("Total Revenue")
+
+                cagr_ebit = _cagr(ebit_s) if ebit_s is not None else None
+                cagr_lucro = _cagr(lucro_s) if lucro_s is not None else None
+                cagr_receita = _cagr(receita_s) if receita_s is not None else None
+
+                if cagr_ebit is not None:
+                    growth_pct = cagr_ebit
+                    growth_fonte = f"CAGR Lucro Operacional ({len(ebit_s)} exercicios)"
+                elif cagr_lucro is not None:
+                    growth_pct = cagr_lucro
+                    growth_fonte = f"CAGR Lucro Liquido ({len(lucro_s)} exercicios)"
+
+                if receita_s is not None and ebit_s is not None:
+                    comuns = sorted(d for d in ebit_s.index if d in receita_s.index)
+                    if len(comuns) >= 2:
+                        r0 = float(receita_s.loc[comuns[0]])
+                        r1 = float(receita_s.loc[comuns[-1]])
+                        if r0 > 0 and r1 > 0:
+                            margem_ini = float(ebit_s.loc[comuns[0]]) / r0 * 100
+                            margem_fim = float(ebit_s.loc[comuns[-1]]) / r1 * 100
         except Exception:
             pass
 
@@ -424,6 +450,11 @@ def fetch_from_yfinance(ticker: str) -> Optional[dict]:
             "volume_dia": info.get("volume", 0),
             "growth_rate": growth_pct,
             "growth_fonte": growth_fonte,
+            "cagr_ebit": cagr_ebit,
+            "cagr_lucro": cagr_lucro,
+            "cagr_receita": cagr_receita,
+            "margem_op_inicial": margem_ini,
+            "margem_op_final": margem_fim,
             "dividend_yield": info.get("dividendYield", 0),
             "fonte": "yfinance"
         }

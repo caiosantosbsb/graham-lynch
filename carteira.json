@@ -98,7 +98,7 @@
       "quantidade": 10,
       "preco_limite": 109.90,
       "enviada_em": "2026-09-02",
-      "obs": "Reenviada em 03/09. Ordem de R$ 1.099 = 11,3% do giro diario (R$ 9.701/dia), executavel mas sem pressa. PM 109,73 vs 109,90: resultado zero a zero."
+      "obs": "PARCIALMENTE EXECUTADA em 03/09 - quantidade nao confirmada (Ion/Itau ainda nao atualizaram). Mantida em 10 ate a confirmacao para nao registrar posicao falsa. Saldo da ordem segue valido no book. Ordem de R$ 1.099 = 11,3% do giro diario (R$ 9.701/dia): execucao parcial e o comportamento esperado nessa liquidez. PM 109,73 vs 109,90: resultado zero a zero."
     },
     {
       "ticker": "CEAB3",
@@ -106,7 +106,7 @@
       "quantidade": 420,
       "preco_limite": 9.39,
       "enviada_em": "2026-09-03",
-      "obs": "R$ 3.943,80. Graham 6/6, margem 58%, Div.Liq/PL 0,04 (praticamente sem divida). Ressalva: crescimento e CAGR de RECEITA (+14,3%), o StatusInvest nao publica CAGR de lucro para ela."
+      "obs": "R$ 3.943,80. Graham 6/6, margem 58%, Div.Liq/PL 0,04 (praticamente sem divida). RESSALVA REMOVIDA em 03/09: o dashboard mostrava crescimento de +14,3% por usar CAGR de RECEITA. Calculado pelo balanco, o lucro OPERACIONAL cresce +61,8% a.a. (R$ 271 mi em 2022 -> R$ 1.147 mi em 2025) com margem operacional subindo de 4,4% para 14,4%. O proxy subestimava a empresa, nao o contrario."
     },
     {
       "ticker": "POMO4",
