@@ -312,11 +312,14 @@ def fetch_from_statusinvest(ticker: str) -> Optional[dict]:
         # Growth: o PEG de Lynch exige crescimento de LUCRO, nao de receita.
         # Receita crescente com margem em queda faz a acao parecer barata sem estar.
         # Por isso o CAGR de LUCROS vem primeiro e o de RECEITAS e apenas fallback.
-        growth = extract_by_contains("CAGR", "LUCRO")
+        cagr_lucros = extract_by_contains("CAGR", "LUCRO")
+        cagr_receitas = extract_by_contains("CAGR", "RECEITA")
+
+        growth = cagr_lucros
         growth_fonte = "CAGR Lucros" if growth is not None else None
 
         if growth is None:
-            growth = extract_by_contains("CAGR", "RECEITA")
+            growth = cagr_receitas
             growth_fonte = "CAGR Receitas (proxy)" if growth is not None else None
 
         return {
@@ -334,6 +337,11 @@ def fetch_from_statusinvest(ticker: str) -> Optional[dict]:
             # criterios de crescimento simplesmente nao pontuam, em vez de fingir 5%.
             "growth_rate": growth,
             "growth_fonte": growth_fonte,
+            # Guardado mesmo quando o CAGR de lucros existe: e o que permite
+            # detectar receita subindo com lucro caindo (compressao de margem)
+            # sem custo de rede adicional, ja que vem da mesma pagina.
+            "cagr_receita": cagr_receitas,
+            "cagr_lucro": cagr_lucros,
             "dividend_yield": extract_value("DIVIDEND YIELD"),
             "fonte": "StatusInvest"
         }
@@ -423,7 +431,161 @@ def fetch_from_yfinance(ticker: str) -> Optional[dict]:
         return None
 
 
+def _cagr(serie) -> Optional[float]:
+    """CAGR em % a.a. de uma serie ordenada por ano. Exige inicio e fim positivos."""
+    vals = [float(v) for v in serie if v is not None]
+    if len(vals) < 2:
+        return None
+    ini, fim = vals[0], vals[-1]
+    if ini <= 0 or fim <= 0:
+        return None
+    return ((fim / ini) ** (1 / (len(vals) - 1)) - 1) * 100
+
+
+def fetch_profit_history(ticker: str) -> Optional[dict]:
+    """
+    Calcula o crescimento REAL a partir do balanco, quando a fonte primaria nao
+    publica o CAGR de lucros.
+
+    Por que o LUCRO OPERACIONAL vem antes do lucro liquido:
+    o liquido no Brasil e contaminado por variacao cambial e nao-recorrentes.
+    A SUZB3 registrou prejuizo liquido de R$ 7,1 bi em 2024 por cambio sobre
+    divida em dolar, com operacao lucrativa; a CEAB3 sai de lucro liquido ~zero
+    em 2022 e produz um CAGR absurdo de +2558% por efeito de base. Nos dois casos
+    o EBIT conta a historia certa (-21,6% e +61,8% ao ano, respectivamente).
+
+    Devolve tambem o CAGR de receita para permitir o teste de divergencia:
+    receita subindo com lucro caindo = compressao de margem, nao crescimento.
+    """
+    try:
+        import yfinance as yf
+
+        sufixo = ".SA" if ticker[-1].isdigit() else ""
+        fin = yf.Ticker(f"{ticker}{sufixo}").financials
+        if fin is None or fin.empty:
+            return None
+
+        def serie(nome):
+            if nome not in fin.index:
+                return None
+            s = fin.loc[nome].dropna().sort_index()
+            return s if len(s) >= 2 else None
+
+        ebit = serie("Operating Income")
+        lucro = serie("Net Income")
+        receita = serie("Total Revenue")
+
+        cagr_ebit = _cagr(ebit) if ebit is not None else None
+        cagr_lucro = _cagr(lucro) if lucro is not None else None
+        cagr_receita = _cagr(receita) if receita is not None else None
+
+        if cagr_ebit is not None:
+            growth, fonte, base = cagr_ebit, "CAGR Lucro Operacional (balanco)", ebit
+        elif cagr_lucro is not None:
+            growth, fonte, base = cagr_lucro, "CAGR Lucro Liquido (balanco)", lucro
+        else:
+            return None
+
+        # Margem operacional inicial x final: evidencia direta de compressao.
+        margem_ini = margem_fim = None
+        if receita is not None and ebit is not None:
+            comuns = [d for d in ebit.index if d in receita.index]
+            if len(comuns) >= 2:
+                comuns.sort()
+                r0, r1 = float(receita.loc[comuns[0]]), float(receita.loc[comuns[-1]])
+                if r0 > 0 and r1 > 0:
+                    margem_ini = float(ebit.loc[comuns[0]]) / r0 * 100
+                    margem_fim = float(ebit.loc[comuns[-1]]) / r1 * 100
+
+        return {
+            "growth_rate": growth,
+            "growth_fonte": fonte,
+            "cagr_ebit": cagr_ebit,
+            "cagr_lucro": cagr_lucro,
+            "cagr_receita": cagr_receita,
+            "margem_op_inicial": margem_ini,
+            "margem_op_final": margem_fim,
+            "exercicios": len(base),
+        }
+    except Exception:
+        return None
+
+
+# Fontes de crescimento que medem RECEITA, nao lucro. Servem de ultimo recurso e
+# nunca podem pontuar nos criterios de crescimento de Lynch.
+FONTES_PROXY = ("CAGR Receitas (proxy)", "Revenue growth YoY (proxy)")
+
+
+def enriquecer_crescimento(data: dict) -> dict:
+    """
+    Substitui crescimento medido por RECEITA pelo crescimento real de LUCRO,
+    e marca a acao como verificada ou nao.
+
+    Sem isso o dashboard exibia "growth" de receita para 11 das 86 acoes; em 9
+    delas o lucro operacional estava estagnado ou encolhendo. Uma acao cujo
+    crescimento nao pode ser confirmado no lucro nao passa a valer menos - ela
+    apenas deixa de pontuar nos criterios de crescimento, porque nao ha evidencia.
+    """
+    fonte = data.get("growth_fonte")
+    precisa = data.get("growth_rate") is None or fonte in FONTES_PROXY
+
+    if precisa:
+        hist = fetch_profit_history(data["ticker"])
+        if hist:
+            data["cagr_receita_proxy"] = (
+                data.get("growth_rate") if fonte in FONTES_PROXY else None
+            )
+            data.update({k: v for k, v in hist.items() if k != "exercicios"})
+            data["growth_exercicios"] = hist["exercicios"]
+
+    fonte = data.get("growth_fonte")
+    data["growth_verificado"] = bool(
+        data.get("growth_rate") is not None and fonte and fonte not in FONTES_PROXY
+    )
+
+    # Divergencia: a empresa vende mais e lucra menos. Vale mesmo para quem ja
+    # tinha CAGR de lucro na fonte primaria - e o teste que expoe compressao de
+    # margem escondida atras de uma linha de receita crescente.
+    #
+    # O criterio precisa ser estreito. Lucro crescendo 15% com receita a 30% nao
+    # e problema nenhum: o lucro esta forte. O padrao perigoso e receita subindo
+    # com lucro PARADO ou CAINDO. Por isso exige as duas coisas ao mesmo tempo:
+    # lucro fraco em termos absolutos (<5% a.a.) E bem atras da receita (>10pp).
+    cagr_r = data.get("cagr_receita")
+    cagr_l = data.get("cagr_ebit")
+    if cagr_l is None:
+        cagr_l = data.get("cagr_lucro")
+    data["cagr_lucro_efetivo"] = cagr_l
+
+    lucro_nao_acompanha = bool(
+        cagr_r is not None and cagr_l is not None
+        and cagr_r > 0 and cagr_l < min(cagr_r - 10, 5)
+    )
+
+    # Gatilho independente: margem operacional encolheu mais de 20% em termos
+    # relativos. Pega a AURE3, cujo lucro ainda cresce 5,9% mas cuja margem caiu
+    # de 22,4% para 11,1% - metade - porque a receita cresceu muito mais rapido.
+    mi, mf = data.get("margem_op_inicial"), data.get("margem_op_final")
+    margem_encolheu = bool(mi is not None and mf is not None and mi > 0 and mf < mi * 0.8)
+
+    data["divergencia_margem"] = lucro_nao_acompanha or margem_encolheu
+    return data
+
+
 def fetch_stock_data(ticker: str) -> Optional[dict]:
+    """
+    Coleta os dados e valida o crescimento antes de devolver.
+
+    O enriquecimento fica aqui, e nao em cada fonte, para garantir que nenhum
+    caminho de fallback (StatusInvest / brapi / yfinance) escape da validacao.
+    """
+    data = _fetch_stock_data_raw(ticker)
+    if data is None:
+        return None
+    return enriquecer_crescimento(data)
+
+
+def _fetch_stock_data_raw(ticker: str) -> Optional[dict]:
     """Tenta StatusInvest (Brasil) → brapi → yfinance (EUA)"""
     print(f"  {ticker}...", end=" ")
     
@@ -592,6 +754,13 @@ def calc_lynch(data: dict) -> dict:
     div_pl = data.get("div_pl")
     dividend_yield = data.get("dividend_yield", 0)
 
+    # Crescimento so pontua se foi medido no LUCRO. Quando a unica medida
+    # disponivel e a receita, nao ha evidencia de que o acionista esteja
+    # ganhando algo - a empresa pode estar vendendo mais e lucrando menos.
+    # Nao e punicao por dado ausente: os criterios de crescimento simplesmente
+    # nao sao avaliados, do mesmo modo que um banco nao e avaliado por Div/EBITDA.
+    verificado = data.get("growth_verificado", growth is not None)
+
     # Crescimento acima de GROWTH_CAP_PEG nao se sustenta e nao deve ser extrapolado.
     # Sem o teto, empresa saindo de base deprimida gera PEG irreal (ex.: NVDA com
     # CAGR de 200% -> PEG 0,14, o que a jogava para o topo do ranking).
@@ -606,27 +775,29 @@ def calc_lynch(data: dict) -> dict:
     score = 0
     criterios = []
 
+    sufixo_nv = " (nao verificado)"
+
     # 1. PEG < 1.0
-    if peg and peg < 1.0:
+    if peg and peg < 1.0 and verificado:
         score += 1
         criterios.append("PEG<1.0 ✓")
     else:
-        criterios.append("PEG<1.0 ✗")
-    
+        criterios.append("PEG<1.0 ✗" + ("" if verificado else sufixo_nv))
+
     # 2. P/L < Crescimento
-    if pl and growth and 0 < pl < growth:
+    if pl and growth and 0 < pl < growth and verificado:
         score += 1
         criterios.append("P/L<Growth ✓")
     else:
-        criterios.append("P/L<Growth ✗")
-    
+        criterios.append("P/L<Growth ✗" + ("" if verificado else sufixo_nv))
+
     # 3. Crescimento > 10%
-    if growth and growth > 10:
+    if growth and growth > 10 and verificado:
         score += 1
         criterios.append("Growth>10% ✓")
     else:
-        criterios.append("Growth>10% ✗")
-    
+        criterios.append("Growth>10% ✗" + ("" if verificado else sufixo_nv))
+
     # 4. ROE > 15%
     if roe and roe > 0.15:
         score += 1
@@ -665,6 +836,15 @@ def calc_lynch(data: dict) -> dict:
         "growth_limitado": growth_limitado,
         "growth_fonte": data.get("growth_fonte"),
         "growth_ausente": growth_bruto is None,
+        "growth_verificado": verificado,
+        "growth_exercicios": data.get("growth_exercicios"),
+        "cagr_receita": data.get("cagr_receita"),
+        "cagr_ebit": data.get("cagr_ebit"),
+        "cagr_lucro_efetivo": data.get("cagr_lucro_efetivo"),
+        "cagr_receita_proxy": data.get("cagr_receita_proxy"),
+        "margem_op_inicial": data.get("margem_op_inicial"),
+        "margem_op_final": data.get("margem_op_final"),
+        "divergencia_margem": data.get("divergencia_margem", False),
         "peg_ratio": peg,
         "roe": roe,
         "dividend_yield": dividend_yield,
@@ -803,6 +983,14 @@ def generate_html(all_data: list[dict], fonte_counts: dict = None) -> str:
   .low-liquidity {{ background: rgba(210,153,34,0.1) !important; border: 1px dashed var(--yellow) !important; }}
   .liquidity-badge {{ display: inline-block; font-size: 0.7em; padding: 2px 6px; border-radius: 6px;
                       background: rgba(210,153,34,0.3); color: var(--yellow); margin-left: 4px; font-weight: 600; }}
+  /* Selos de qualidade do dado de crescimento. Vermelho = o "crescimento" exibido
+     nao foi confirmado no lucro; laranja = lucro crescendo menos que a receita. */
+  .growth-badge {{ display: inline-block; font-size: 0.7em; padding: 2px 6px; border-radius: 6px;
+                   margin-left: 4px; font-weight: 600; vertical-align: middle; }}
+  .growth-badge.unverified {{ background: rgba(248,81,73,0.25); color: var(--red);
+                              border: 1px dashed var(--red); }}
+  .growth-badge.squeeze {{ background: rgba(210,153,34,0.25); color: var(--yellow); }}
+  .growth-src {{ display: block; font-size: 0.7em; color: var(--text2); margin-top: 2px; }}
   .pro-table {{ width: 100%; border-collapse: collapse; background: var(--card);
                 border-radius: 12px; overflow: hidden; margin-top: 20px; }}
   .pro-table th {{ background: #1c2333; padding: 14px 12px; text-align: left; font-size: 0.85em;
@@ -1409,8 +1597,27 @@ function getStockBuyStrength(ticker) {{
   if (lynch && lynch.growth_ausente) {{
     alertas.push('Sem dado de crescimento — PEG e criterios de growth nao pontuaram');
   }}
-  if (lynch && lynch.growth_fonte && lynch.growth_fonte.indexOf('proxy') >= 0) {{
-    alertas.push('Crescimento vem de RECEITA, nao de lucro (proxy menos confiavel)');
+  // Crescimento nao verificado: a unica medida disponivel foi RECEITA. Empresa pode
+  // estar vendendo mais e lucrando menos, entao os criterios de growth nao pontuam.
+  if (lynch && lynch.growth_verificado === false && !lynch.growth_ausente) {{
+    alertas.push('CRESCIMENTO NAO VERIFICADO — medido por RECEITA, sem confirmacao no lucro. ' +
+                 'Os 3 criterios de crescimento de Lynch nao pontuaram por falta de evidencia');
+  }}
+  // Divergencia: receita sobe e lucro operacional cai = compressao de margem.
+  // E o padrao que faz uma empresa em deterioracao parecer "em crescimento".
+  if (lynch && lynch.divergencia_margem) {{
+    let txt = 'MARGEM EM COMPRESSAO — receita ' +
+              (lynch.cagr_receita !== null && lynch.cagr_receita !== undefined
+                ? (lynch.cagr_receita >= 0 ? '+' : '') + lynch.cagr_receita.toFixed(1)
+                : '?') +
+              '% a.a. mas lucro ' + (lynch.cagr_lucro_efetivo !== null && lynch.cagr_lucro_efetivo !== undefined
+                ? (lynch.cagr_lucro_efetivo >= 0 ? '+' : '') + lynch.cagr_lucro_efetivo.toFixed(1)
+                : '?') + '% a.a.';
+    if (lynch.margem_op_inicial !== null && lynch.margem_op_inicial !== undefined) {{
+      txt += ' (margem operacional ' + lynch.margem_op_inicial.toFixed(1) +
+             '% -> ' + lynch.margem_op_final.toFixed(1) + '%)';
+    }}
+    alertas.push(txt);
   }}
   if (lynch && lynch.dy_suspeito) {{
     alertas.push('DY de ' + lynch.dividend_yield.toFixed(1) +
@@ -1423,6 +1630,30 @@ function getStockBuyStrength(ticker) {{
   const tipo = (gOk && lOk) ? 'dual' : gOk ? 'graham' : lOk ? 'lynch' : 'none';
   
   return {{ strength, reasons, alertas, graham, lynch, tipo, gOk, lOk }};
+}}
+
+// Selos de qualidade do crescimento, usados nos cards de Graham e de Lynch.
+// O ranking sozinho nao mostra que "growth" pode ser receita sem lucro, entao o
+// aviso precisa estar no card, nao so no texto do alerta.
+function growthBadges(ticker) {{
+  const l = LYNCH_DATA.find(s => s.ticker === ticker);
+  if (!l) return '';
+  let html = '';
+  if (l.growth_verificado === false && !l.growth_ausente) {{
+    html += '<span class="growth-badge unverified" title="O crescimento exibido foi medido em RECEITA. ' +
+            'Nao foi possivel confirmar no lucro, entao os criterios de crescimento de Lynch nao pontuaram.">' +
+            '⚠️ Growth nao verificado</span>';
+  }}
+  if (l.divergencia_margem) {{
+    const r = (l.cagr_receita !== null && l.cagr_receita !== undefined)
+      ? (l.cagr_receita >= 0 ? '+' : '') + l.cagr_receita.toFixed(0) + '%' : '?';
+    const cl = l.cagr_lucro_efetivo;
+    const e = (cl !== null && cl !== undefined)
+      ? (cl >= 0 ? '+' : '') + cl.toFixed(0) + '%' : '?';
+    html += '<span class="growth-badge squeeze" title="Receita ' + r + ' a.a. e lucro ' + e +
+            ' a.a. — a empresa vende mais e lucra menos.">🔻 Margem ' + r + ' / ' + e + '</span>';
+  }}
+  return html;
 }}
 
 function renderTopBuy() {{
@@ -1588,6 +1819,7 @@ function renderPro() {{
           ${{s.ticker}}
           ${{s.dualOk ? '<span style="font-size: 0.6em; background: rgba(63,185,80,0.2); color: var(--green); padding: 2px 6px; border-radius: 4px; margin-left: 4px; vertical-align: middle;">+Lynch</span>' : ''}}
           ${{s.lowLiq ? '<span class="liquidity-badge">⚠️ Liq.</span>' : ''}}
+          ${{growthBadges(s.ticker)}}
         </span>
         <span class="status ${{s.nivelClass}}">${{s.nivel}}</span>
         <span style="color: var(--text2); font-size: 0.85em;">${{moeda(s.ticker)}} ${{fmt(s.cotacao)}} ${{s.preco_justo ? '→ Justo ' + moeda(s.ticker) + ' ' + fmt(s.preco_justo) : ''}}</span>
@@ -1676,6 +1908,7 @@ function renderLynchPro() {{
           ${{s.ticker}}
           ${{s.dualOk ? '<span style="font-size: 0.6em; background: rgba(63,185,80,0.2); color: var(--green); padding: 2px 6px; border-radius: 4px; margin-left: 4px; vertical-align: middle;">+Graham</span>' : ''}}
           ${{s.lowLiq ? '<span class="liquidity-badge">⚠️ Liq.</span>' : ''}}
+          ${{growthBadges(s.ticker)}}
         </span>
         <span class="status ${{s.nivelClass}}">${{s.nivel}}</span>
         <span style="color: var(--text2); font-size: 0.85em;">${{moeda(s.ticker)}} ${{fmt(s.cotacao)}}</span>
@@ -1684,7 +1917,7 @@ function renderLynchPro() {{
       
       <div style="display: flex; gap: 12px; margin-top: 10px; flex-wrap: wrap; align-items: center;">
         <span style="background: #0d1117; padding: 8px 16px; border-radius: 8px; font-size: 1.05em;">PEG <strong style="color: ${{s.peg_ratio && s.peg_ratio < 1 ? 'var(--green)' : 'var(--red)'}}; font-size: 1.2em;">${{s.peg_ratio ? s.peg_ratio.toFixed(2) : 'N/A'}}</strong></span>
-        <span style="background: #0d1117; padding: 8px 16px; border-radius: 8px; font-size: 1.05em;">Growth <strong style="color: ${{s.growth_rate > 10 ? 'var(--green)' : 'var(--text)'}}; font-size: 1.2em;">${{s.growth_rate ? s.growth_rate.toFixed(1) + '%' : 'N/A'}}</strong></span>
+        <span style="background: #0d1117; padding: 8px 16px; border-radius: 8px; font-size: 1.05em;">Growth <strong style="color: ${{s.growth_verificado === false ? 'var(--red)' : (s.growth_rate > 10 ? 'var(--green)' : 'var(--text)')}}; font-size: 1.2em;">${{s.growth_rate ? s.growth_rate.toFixed(1) + '%' : 'N/A'}}</strong><span class="growth-src">${{s.growth_fonte || 'sem fonte'}}</span></span>
         <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">ROE <strong style="color: ${{s.roe && s.roe > 0.15 ? 'var(--green)' : 'var(--text)'}}">${{s.roe ? (s.roe * 100).toFixed(0) + '%' : 'N/A'}}</strong></span>
         <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">Yield <strong>${{s.dividend_yield ? (s.dividend_yield > 1 ? s.dividend_yield.toFixed(1) : (s.dividend_yield * 100).toFixed(1)) + '%' : 'N/A'}}</strong></span>
         <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">${{'★'.repeat(s.score) + '☆'.repeat(6-s.score)}}</span>
