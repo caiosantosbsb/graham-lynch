@@ -25,13 +25,18 @@ if sys.stdout.encoding != "utf-8":
 TICKERS = [
     # Brasil - Blue Chips & Dividendos
     "SAPR11", "PETR4", "GOAU4", "CMIG4", "ITSA4", "AXIA3",
-    "ENBR3", "FLRY3", "SUZB3", "PSSA3", "BNBR3", "BBAS3", "CPFE3",
+    "FLRY3", "SUZB3", "PSSA3", "BNBR3", "BBAS3", "CPFE3",
     "GGBR4", "LEVE3", "NEOE3", "SBSP3", "VALE3", "TAEE11",
     "VIVT3", "TUPY3", "CPLE3", "AURE3", "RAPT4", "CSNA3", "WEGE3",
     
     # Brasil - Crescimento & Tech
     "ASAI3", "MULT3", "TIMS3", "RENT3", "MGLU3", "B3SA3",
-    "CIEL3", "SQIA3", "PCAR3", "GRND3",
+    "CIEL3", "PCAR3", "GRND3",
+
+    # REMOVIDAS em 03/09/2026 por volume diario ZERO no StatusInvest, ou seja,
+    # nao ha mais negociacao: ENBR3 (EDP Brasil) e SQIA3 (Sinqia), ambas fora da
+    # bolsa apos aquisicao. Continuavam pontuando - a ENBR3 aparecia como Graham
+    # 5/6 - sobre precos congelados, o que e ruido puro no ranking.
 
     # Brasil - Ampliacao do universo (set/2026): nomes descontados com lucro
     # crescendo que ficavam de fora por ausencia na lista, nao por reprovacao.
@@ -559,6 +564,15 @@ def fetch_profit_history(ticker: str) -> Optional[dict]:
 # nunca podem pontuar nos criterios de crescimento de Lynch.
 FONTES_PROXY = ("CAGR Receitas (proxy)", "Revenue growth YoY (proxy)")
 
+# Crescimento de UM unico exercicio contra o anterior. Mede lucro, e nao receita,
+# mas um ano isolado nao e tendencia: nao filtra ciclo, nao-recorrente nem base
+# deprimida. Dava PEG 0,26 para a BRK-B, uma holding madura, ao projetar 50% a.a.
+# a partir de um ano bom. Nao pontua, pelo mesmo motivo dos proxies.
+FONTES_ANO_UNICO = ("Earnings growth YoY",)
+
+# Fontes que nao pontuam nos criterios de crescimento de Lynch.
+FONTES_SEM_PONTO = FONTES_PROXY + FONTES_ANO_UNICO
+
 
 GAP_JANELAS_PP = 20.0  # divergencia tolerada entre as duas janelas de crescimento
 
@@ -620,9 +634,23 @@ def enriquecer_crescimento(data: dict) -> dict:
 
     fonte = data.get("growth_fonte")
     data["growth_verificado"] = bool(
-        data.get("growth_rate") is not None and fonte and fonte not in FONTES_PROXY
+        data.get("growth_rate") is not None and fonte and fonte not in FONTES_SEM_PONTO
     )
     data.setdefault("growth_janela_conflito", False)
+
+    # Sem contraprova: o numero e CAGR de LUCRO (metrica certa), mas veio da janela
+    # longa da fonte e nao houve balanco para confrontar. Acontece quando o Yahoo
+    # nao cobre o ticker - NEOE3, CPLE6, JBSS3 e CRFB3 respondem 404, sendo que a
+    # CPLE3 da mesma empresa responde normalmente.
+    #
+    # Isso NAO tira pontos de proposito. Tirar seria punir a empresa por uma falha
+    # de cobertura de dados, o mesmo erro que quase custou a CEAB3. O selo existe
+    # para voce saber que aquele crescimento nao passou pelo mesmo crivo dos outros.
+    data["growth_sem_contraprova"] = bool(
+        data.get("growth_verificado")
+        and data.get("growth_rate_balanco") is None
+        and not (fonte and ("balanco" in fonte or "exercicios" in fonte))
+    )
 
     # Divergencia: a empresa vende mais e lucra menos. Vale mesmo para quem ja
     # tinha CAGR de lucro na fonte primaria - e o teste que expoe compressao de
@@ -950,6 +978,7 @@ def calc_lynch(data: dict) -> dict:
         "growth_fonte": data.get("growth_fonte"),
         "growth_ausente": growth_bruto is None,
         "growth_verificado": verificado,
+        "growth_sem_contraprova": data.get("growth_sem_contraprova", False),
         "growth_exercicios": data.get("growth_exercicios"),
         "cagr_receita": data.get("cagr_receita"),
         "cagr_ebit": data.get("cagr_ebit"),
@@ -1124,6 +1153,7 @@ def generate_html(all_data: list[dict], fonte_counts: dict = None) -> str:
   .growth-badge.squeeze {{ background: rgba(210,153,34,0.25); color: var(--yellow); }}
   .growth-badge.conflito {{ background: rgba(163,113,247,0.25); color: #a371f7; }}
   .growth-badge.alavanca {{ background: rgba(219,109,40,0.25); color: var(--orange, #db6d28); }}
+  .growth-badge.sem-contraprova {{ background: rgba(139,148,158,0.25); color: var(--text2); }}
   .growth-src {{ display: block; font-size: 0.7em; color: var(--text2); margin-top: 2px; }}
   .pro-table {{ width: 100%; border-collapse: collapse; background: var(--card);
                 border-radius: 12px; overflow: hidden; margin-top: 20px; }}
@@ -1731,10 +1761,11 @@ function getStockBuyStrength(ticker) {{
   if (lynch && lynch.growth_ausente) {{
     alertas.push('Sem dado de crescimento — PEG e criterios de growth nao pontuaram');
   }}
-  // Crescimento nao verificado: a unica medida disponivel foi RECEITA. Empresa pode
-  // estar vendendo mais e lucrando menos, entao os criterios de growth nao pontuam.
+  // Crescimento nao verificado: a medida disponivel foi RECEITA, ou o lucro de um
+  // unico exercicio contra o anterior. Nenhuma das duas sustenta uma projecao.
   if (lynch && lynch.growth_verificado === false && !lynch.growth_ausente) {{
-    alertas.push('CRESCIMENTO NAO VERIFICADO — medido por RECEITA, sem confirmacao no lucro. ' +
+    alertas.push('CRESCIMENTO NAO VERIFICADO — a fonte foi "' + (lynch.growth_fonte || '?') +
+                 '", que nao e CAGR de lucro plurianual. ' +
                  'Os 3 criterios de crescimento de Lynch nao pontuaram por falta de evidencia');
   }}
   // Divergencia: receita sobe e lucro operacional cai = compressao de margem.
@@ -1754,12 +1785,17 @@ function getStockBuyStrength(ticker) {{
     alertas.push(txt);
   }}
   if (lynch && lynch.growth_janela_conflito) {{
-    alertas.push('JANELAS DISCORDAM — a fonte apura ' +
+    alertas.push('PERIODOS DE APURACAO DISCORDAM — a fonte mede 5 anos e apura ' +
                  (lynch.growth_rate_fonte_original >= 0 ? '+' : '') + lynch.growth_rate_fonte_original.toFixed(1) +
-                 '% a.a. em 5 anos e o balanco ' +
+                 '% a.a.; o balanco mede 4 anos e apura ' +
                  (lynch.growth_rate_balanco >= 0 ? '+' : '') + lynch.growth_rate_balanco.toFixed(1) +
-                 '% a.a. em 4. A janela longa costuma incluir base deprimida de 2020/2021. ' +
-                 'O PEG usou o menor dos dois');
+                 '% a.a. A janela longa costuma comecar na base deprimida de 2020/2021, ' +
+                 'transformando recuperacao ja concluida em "crescimento". O PEG usou o menor dos dois');
+  }}
+  if (lynch && lynch.growth_sem_contraprova) {{
+    alertas.push('CRESCIMENTO SEM CONTRAPROVA — o numero e CAGR de lucro, a metrica certa, mas so ' +
+                 'existe na janela longa da fonte: nao ha balanco no Yahoo para este ticker, entao ' +
+                 'nao foi possivel confrontar as duas janelas como nas demais. Os pontos foram mantidos');
   }}
   if (lynch && lynch.roe_alavancado) {{
     const cp = (lynch.roic !== null && lynch.roic !== undefined) ? lynch.roic : lynch.roa;
@@ -1804,9 +1840,16 @@ function growthBadges(ticker) {{
   if (l.growth_janela_conflito) {{
     const a = (l.growth_rate_fonte_original >= 0 ? '+' : '') + l.growth_rate_fonte_original.toFixed(0) + '%';
     const b = (l.growth_rate_balanco >= 0 ? '+' : '') + l.growth_rate_balanco.toFixed(0) + '%';
-    html += '<span class="growth-badge conflito" title="A fonte diz ' + a +
-            ' a.a. e o balanco diz ' + b + ' a.a. As janelas de apuracao discordam. ' +
-            'O PEG passou a usar o menor dos dois.">⏳ Janelas ' + a + ' / ' + b + '</span>';
+    html += '<span class="growth-badge conflito" title="Periodos de apuracao diferentes: a fonte mede 5 anos e diz ' + a +
+            ' a.a., o balanco mede 4 anos e diz ' + b + ' a.a. A janela longa costuma comecar na base deprimida ' +
+            'de 2020/2021. O PEG passou a usar o menor dos dois. Nao tem relacao com liquidez.">' +
+            '⏳ Periodos 5a ' + a + ' / 4a ' + b + '</span>';
+  }}
+  if (l.growth_sem_contraprova) {{
+    html += '<span class="growth-badge sem-contraprova" title="O crescimento e CAGR de LUCRO, a metrica certa, mas ' +
+            'veio so da janela longa da fonte: o Yahoo nao cobre este ticker e nao houve balanco para confrontar. ' +
+            'Os pontos foram mantidos porque a falha e de cobertura de dados, nao da empresa.">' +
+            '🔍 Sem contraprova</span>';
   }}
   if (l.roe_alavancado) {{
     const cp = (l.roic !== null && l.roic !== undefined) ? l.roic : l.roa;
