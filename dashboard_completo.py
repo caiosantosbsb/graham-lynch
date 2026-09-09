@@ -1173,10 +1173,16 @@ def generate_html(all_data: list[dict], fonte_counts: dict = None) -> str:
   .carteira-gain.negative {{ background: rgba(248,81,73,0.2); color: var(--red); }}
   .status-badge {{ display: inline-block; font-size: 0.75em; padding: 3px 6px; border-radius: 4px;
                    font-weight: 600; background: rgba(88,166,255,0.2); color: var(--blue); }}
-  .total-investido {{ background: var(--card); border: 2px solid var(--border); border-radius: 12px;
-                      padding: 20px; text-align: center; margin: 20px 0; }}
-  .total-investido .valor {{ font-size: 1.8em; font-weight: 700; color: var(--green); margin: 8px 0; }}
-  .total-investido .label {{ color: var(--text2); font-size: 0.9em; }}
+  .total-investido {{ background: var(--card); border: 2px solid var(--green); border-radius: 12px;
+                      padding: 28px 20px; text-align: center; margin: 20px 0;
+                      box-shadow: 0 0 24px rgba(63, 185, 80, 0.15); }}
+  .total-investido .valor {{ font-size: 3.2em; font-weight: 800; color: var(--green); margin: 10px 0;
+                             letter-spacing: -0.02em; line-height: 1.1; }}
+  .total-investido .label {{ color: var(--text); font-size: 1.05em; font-weight: 600;
+                             text-transform: uppercase; letter-spacing: 0.08em; }}
+  .total-investido .sub {{ font-size: 1.15em; color: var(--blue); font-weight: 600; margin-top: 10px; }}
+  .total-investido .sub .cambio {{ color: var(--text); font-size: 0.85em; font-weight: 400; }}
+  @media (max-width: 600px) {{ .total-investido .valor {{ font-size: 2.1em; }} }}
 
 
 </style>
@@ -1200,9 +1206,9 @@ def generate_html(all_data: list[dict], fonte_counts: dict = None) -> str:
 
 <div id="carteira" class="tab-content active">
   <div class="total-investido">
-    <div class="label">Patrimonio Investido</div>
+    <div class="label">Patrimonio Total</div>
     <div class="valor" id="carteira-total">R$ 0,00</div>
-    <div class="label" id="carteira-rentabilidade" style="font-size: 1.2em; margin-top: 12px;">+0,00% (R$ 0,00)</div>
+    <div class="label" id="carteira-rentabilidade" style="font-size: 1.25em; margin-top: 14px; text-transform: none; letter-spacing: 0;">+0,00% (R$ 0,00)</div>
   </div>
   <div id="carteira-dividendos" style="margin-top: 16px;"></div>
   <div id="carteira-body"></div>
@@ -1356,11 +1362,13 @@ function renderCarteira() {{
   const totalGanhoBRL = totalPatrimonioBRL - totalInvestidoBRL;
   const totalPctBRL = totalInvestidoBRL > 0 ? (totalGanhoBRL / totalInvestidoBRL) * 100 : 0;
   
-  // Atualizar totalizador
-  let totalStr = 'R$ ' + fmt(totalBRL_atual);
-  if (totalUSD_atual > 0) totalStr += '  |  US$ ' + fmt(totalUSD_atual);
-  document.getElementById('carteira-total').innerHTML = totalStr + 
-    `<div style="font-size: 0.5em; color: var(--text2); margin-top: 6px;">Patrim\\u00f4nio Total: R$ ${{fmt(totalPatrimonioBRL)}} <span style="font-size: 0.85em;">(USD/BRL ${{fmt(USD_BRL, 2)}})</span></div>`;
+  // Atualizar totalizador: o patrimonio total em BRL vira o numero principal e a
+  // quebra por moeda desce para a linha secundaria.
+  let quebraStr = 'R$ ' + fmt(totalBRL_atual);
+  if (totalUSD_atual > 0) quebraStr += ' &nbsp;|&nbsp; US$ ' + fmt(totalUSD_atual);
+  document.getElementById('carteira-total').innerHTML =
+    `R$ ${{fmt(totalPatrimonioBRL)}}` +
+    `<div class="sub">${{quebraStr}} <span class="cambio">(USD/BRL ${{fmt(USD_BRL, 2)}})</span></div>`;
   
   const brlLabel = totalBRL_ganho >= 0 ? '+' : '';
   const usdLabel = totalUSD_ganho >= 0 ? '+' : '';
