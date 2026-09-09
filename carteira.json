@@ -46,21 +46,12 @@
       "corretora": "Ion"
     },
     {
-      "id": 6,
-      "ticker": "GRND3",
-      "quantidade": 550,
-      "preco_medio": 3.69,
-      "data_compra": "2026-08-01",
-      "descricao": "Consumo - TOP BUY (DY alto e nao recorrente)",
-      "corretora": "Ion"
-    },
-    {
       "id": 7,
-      "ticker": "BNBR3",
-      "quantidade": 10,
-      "preco_medio": 109.73,
-      "data_compra": "2025-12-01",
-      "descricao": "Renda passiva - VENDA PENDENTE (ordem enviada 02/09, sem execucao por baixa liquidez)",
+      "ticker": "SBFG3",
+      "quantidade": 250,
+      "preco_medio": 8.81,
+      "data_compra": "2026-09-09",
+      "descricao": "Consumo & Varejo - Grupo SBF (Centauro/Nike BR). Comprada com o caixa da venda integral de BNBR3",
       "corretora": "Ion"
     },
     {
@@ -93,10 +84,10 @@
     {
       "id": 11,
       "ticker": "POMO4",
-      "quantidade": 800,
-      "preco_medio": 4.60,
-      "data_compra": "2026-09-03",
-      "descricao": "Industrial - Dupla validacao (Graham 6/6 e Lynch 6/6, #1 do Lynch Pro). EXECUTADA 03/09 no preco limite",
+      "quantidade": 1250,
+      "preco_medio": 4.5424,
+      "data_compra": "2026-09-09",
+      "descricao": "Industrial - Dupla validacao (Graham 6/6 e Lynch 6/6, #1 do Lynch Pro). 800 un @ 4,60 em 03/09 + 450 un @ 4,44 em 09/09 (caixa da venda de GRND3)",
       "corretora": "Ion"
     }
   ],
@@ -109,15 +100,6 @@
     "historico": [],
     "nota": "Adicione aqui os dividendos recebidos na conta corrente, ex: {\"mes\": \"2026-07\", \"valor\": 320.50, \"obs\": \"PETR4+TAEE11\"}. O 'Estimado' na aba CARTEIRA e calculado automaticamente pelo Dividend Yield atual x valor investido."
   },
-  "ordens_pendentes": [
-    {
-      "ticker": "BNBR3",
-      "tipo": "VENDA",
-      "quantidade": 10,
-      "preco_limite": 109.90,
-      "enviada_em": "2026-09-02",
-      "obs": "PARCIALMENTE EXECUTADA em 03/09 - quantidade nao confirmada (Ion/Itau ainda nao atualizaram). Mantida em 10 ate a confirmacao para nao registrar posicao falsa. Saldo da ordem segue valido no book. Ordem de R$ 1.099 = 11,3% do giro diario (R$ 9.701/dia): execucao parcial e o comportamento esperado nessa liquidez. PM 109,73 vs 109,90: resultado zero a zero."
-    }
-  ],
-  "notas": "03/09/2026 - POMO4 EXECUTADA: 800 un @ 4,60 = R$ 3.680,00, movida para a carteira. Unica posicao com dupla validacao apos os ajustes: Graham 6/6 e Lynch 6/6, #1 do Lynch Pro. Lucro cresce acima da receita = ganho de margem operacional. DY de 21,6% e extraordinario, nao repetir a conta no ano que vem. | 03/09/2026 - CEAB3 EXECUTADA: 420 un @ 9,39 = R$ 3.943,80. Tese confirmada pelo balanco: lucro OPERACIONAL +61,8% a.a. (R$ 271 mi em 2022 -> R$ 1.147 mi em 2025), margem de 4,4% para 14,4%, Div.Liq/PL 0,04. O dashboard mostrava so +14,3% porque usava CAGR de RECEITA - o proxy subestimava a empresa. PENDENTE: apenas a VENDA de BNBR3 10 @ 109,90 (parcial, quantidade nao confirmada). | 02/09/2026 - posicao Ion e Avenue conferidas contra extrato. Ordem de COMPRA de RENT3 (60 @ 36,42) CANCELADA: margem de apenas 10% e Div/PL 1,27 reprovam no criterio de acoes descontadas. VENDIDAS: TAEE11 (100un por R$ 4.144, +12,33%) e SAPR11 (55un por R$ 1.914, -6,35%), caixa de R$ 6.058. Quantidades corrigidas: PETR4 324->333 (PM 30,91->34,88), SUZB3 131->183, CMIG4 200->400. GRND3 550un @ 3,69 estava fora do json e era a posicao de ~R$ 3.758 que nao fechava."
+  "ordens_pendentes": [],
+  "notas": "09/09/2026 - POMO4 REFORCADA: +450 un @ 4,44 = R$ 1.998,00, posicao vai a 1.250 un com PM 4,5424 (era 800 @ 4,60). Caixa veio da venda de GRND3. Escolhida por ser a unica posicao com dupla validacao Graham 6/6 + Lynch 6/6 (PEG 0,09, ROE 28,3%, P/L 4,62) e por Industrial ser o setor menos representado. | 09/09/2026 - GRND3 VENDIDA: 550 un @ 3,73 = R$ 2.051,50 (PM 3,69, +1,08% alem dos proventos ja recebidos). Posicao encerrada para resolver a concentracao em Consumo & Varejo (eram 3 empresas contra o limite pessoal de 2). Perdia para SBFG3 em margem (47% vs 63%), PEG (0,79 vs 0,18) e ROIC (7,8% vs 9,5%); o DY de 33,8% era extraordinario e nao recorrente. | 09/09/2026 - BNBR3 LIQUIDADA: as 10 unidades foram vendidas @ 109,90 (PM 109,73, resultado praticamente zero a zero). Posicao encerrada e removida da carteira; nao ha mais ordem pendente. | 09/09/2026 - SBFG3 COMPRADA: 250 un @ 8,81 = R$ 2.202,50. ATENCAO A CONCENTRACAO: resolvida no mesmo dia com a venda de GRND3 - Consumo & Varejo fica com 2 posicoes (CEAB3 e SBFG3), dentro da regra pessoal. | 03/09/2026 - POMO4 EXECUTADA: 800 un @ 4,60 = R$ 3.680,00, movida para a carteira. Unica posicao com dupla validacao apos os ajustes: Graham 6/6 e Lynch 6/6, #1 do Lynch Pro. Lucro cresce acima da receita = ganho de margem operacional. DY de 21,6% e extraordinario, nao repetir a conta no ano que vem. | 03/09/2026 - CEAB3 EXECUTADA: 420 un @ 9,39 = R$ 3.943,80. Tese confirmada pelo balanco: lucro OPERACIONAL +61,8% a.a. (R$ 271 mi em 2022 -> R$ 1.147 mi em 2025), margem de 4,4% para 14,4%, Div.Liq/PL 0,04. O dashboard mostrava so +14,3% porque usava CAGR de RECEITA - o proxy subestimava a empresa. PENDENTE: apenas a VENDA de BNBR3 10 @ 109,90 (parcial, quantidade nao confirmada). | 02/09/2026 - posicao Ion e Avenue conferidas contra extrato. Ordem de COMPRA de RENT3 (60 @ 36,42) CANCELADA: margem de apenas 10% e Div/PL 1,27 reprovam no criterio de acoes descontadas. VENDIDAS: TAEE11 (100un por R$ 4.144, +12,33%) e SAPR11 (55un por R$ 1.914, -6,35%), caixa de R$ 6.058. Quantidades corrigidas: PETR4 324->333 (PM 30,91->34,88), SUZB3 131->183, CMIG4 200->400. GRND3 550un @ 3,69 estava fora do json e era a posicao de ~R$ 3.758 que nao fechava."
 }
