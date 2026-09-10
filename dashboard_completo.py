@@ -234,6 +234,8 @@ def fetch_from_brapi(ticker: str) -> Optional[dict]:
             # Sem default de 5%: se a brapi nao trouxer o dado, fica None.
             "growth_rate": r.get("revenuegrowth5year"),
             "growth_fonte": "Revenue growth 5a (proxy)" if r.get("revenuegrowth5year") is not None else None,
+            # A brapi tambem devolve o DY em percentual, mesma unidade do StatusInvest
+            # e do yfinance. Todas as fontes gravam percentual: o front usa direto.
             "dividend_yield": r.get("dividendYield"),
             "fonte": "brapi.dev"
         }
@@ -473,6 +475,9 @@ def fetch_from_yfinance(ticker: str) -> Optional[dict]:
             "cagr_receita": cagr_receita,
             "margem_op_inicial": margem_ini,
             "margem_op_final": margem_fim,
+            # O yfinance devolve dividendYield JA em percentual (NVDA = 0.45 significa
+            # 0,45% a.a., nao 45%). Confirmado contra dividendRate/currentPrice.
+            # Nao multiplicar por 100 aqui nem no front.
             "dividend_yield": info.get("dividendYield", 0),
             "fonte": "yfinance"
         }
@@ -1340,11 +1345,13 @@ function renderCarteira() {{
         totalBRL_atual += valorAtual;
       }}
       
-      // Estimativa de dividendos anuais (DY atual x valor da posicao), convertido em BRL
+      // Estimativa de dividendos anuais (DY atual x valor da posicao), convertido em BRL.
+      // O DY ja vem em percentual de todas as fontes. A heuristica antiga "se < 1,
+      // multiplica por 100" quebrava com acoes de yield baixo: a NVDA, com 0,45% a.a.,
+      // era exibida como 45%.
       const lynchStock = LYNCH_DATA.find(s => s.ticker === pos.ticker);
-      const dyRaw = lynchStock ? lynchStock.dividend_yield : null;
-      if (dyRaw) {{
-        const dyPct = dyRaw > 1 ? dyRaw : dyRaw * 100;
+      const dyPct = lynchStock ? lynchStock.dividend_yield : null;
+      if (dyPct) {{
         const valorAtualBRL = isUS(pos.ticker) ? valorAtual * USD_BRL : valorAtual;
         dividendoEstimadoAnualBRL += valorAtualBRL * (dyPct / 100);
       }}
@@ -1446,12 +1453,11 @@ function renderCarteira() {{
     const margem = graham ? (graham.margem_seguranca || 0) : 0;
     const peg = lynch ? lynch.peg_ratio : null;
     
-    // DY (Dividend Yield) atual da posicao, com estimativa de dividendo anual
-    const dyRawPos = lynch ? lynch.dividend_yield : null;
-    const dyPctPos = dyRawPos ? (dyRawPos > 1 ? dyRawPos : dyRawPos * 100) : 0;
+    // DY (Dividend Yield) atual da posicao, ja em percentual na origem.
+    const dyPctPos = (lynch && lynch.dividend_yield) ? lynch.dividend_yield : 0;
     const divAnualPos = valorAtual * (dyPctPos / 100);
     const dyDisplay = dyPctPos > 0
-      ? `<div style="font-weight: 700; color: var(--green);">${{dyPctPos.toFixed(1)}}%</div>
+      ? `<div style="font-weight: 700; color: var(--green);">${{dyPctPos < 1 ? dyPctPos.toFixed(2) : dyPctPos.toFixed(1)}}%</div>
          <div style="color: var(--text2); font-size: 0.72em;">${{moeda(pos.ticker)}} ${{fmt(divAnualPos)}}/ano</div>`
       : `<div style="color: var(--text2);">—</div>`;
     
@@ -2131,7 +2137,7 @@ function renderLynchPro() {{
         <span style="background: #0d1117; padding: 8px 16px; border-radius: 8px; font-size: 1.05em;">PEG <strong style="color: ${{s.peg_ratio && s.peg_ratio < 1 ? 'var(--green)' : 'var(--red)'}}; font-size: 1.2em;">${{s.peg_ratio ? s.peg_ratio.toFixed(2) : 'N/A'}}</strong></span>
         <span style="background: #0d1117; padding: 8px 16px; border-radius: 8px; font-size: 1.05em;">Growth <strong style="color: ${{s.growth_verificado === false ? 'var(--red)' : (s.growth_rate > 10 ? 'var(--green)' : 'var(--text)')}}; font-size: 1.2em;">${{s.growth_rate ? s.growth_rate.toFixed(1) + '%' : 'N/A'}}</strong><span class="growth-src">${{s.growth_fonte || 'sem fonte'}}</span></span>
         <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">ROE <strong style="color: ${{s.roe_alavancado ? 'var(--red)' : (s.roe && s.roe > 0.15 ? 'var(--green)' : 'var(--text)')}}">${{s.roe ? (s.roe * 100).toFixed(0) + '%' : 'N/A'}}</strong>${{(s.roic !== null && s.roic !== undefined) || (s.roa !== null && s.roa !== undefined) ? '<span class="growth-src">cap. total ' + (((s.roic !== null && s.roic !== undefined) ? s.roic : s.roa) * 100).toFixed(0) + '%</span>' : ''}}</span>
-        <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">Yield <strong>${{s.dividend_yield ? (s.dividend_yield > 1 ? s.dividend_yield.toFixed(1) : (s.dividend_yield * 100).toFixed(1)) + '%' : 'N/A'}}</strong></span>
+        <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">Yield <strong>${{s.dividend_yield ? (s.dividend_yield < 1 ? s.dividend_yield.toFixed(2) : s.dividend_yield.toFixed(1)) + '%' : 'N/A'}}</strong></span>
         <span style="background: #0d1117; padding: 6px 12px; border-radius: 8px; font-size: 0.85em;">${{'★'.repeat(s.score) + '☆'.repeat(6-s.score)}}</span>
         ${{s.dualOk ? '<span style="font-size: 0.75em; color: var(--green);">Graham ' + '★'.repeat(s.graham.score) + '</span>' : ''}}
       </div>
