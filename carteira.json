@@ -28,15 +28,6 @@
       "corretora": "Ion"
     },
     {
-      "id": 4,
-      "ticker": "CPFE3",
-      "quantidade": 61,
-      "preco_medio": 40.78,
-      "data_compra": "2025-10-01",
-      "descricao": "Energia - Dividendos",
-      "corretora": "Ion"
-    },
-    {
       "id": 5,
       "ticker": "CMIG4",
       "quantidade": 400,
