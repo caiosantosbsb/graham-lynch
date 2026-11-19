@@ -407,6 +407,7 @@ def fetch_from_yfinance(ticker: str) -> Optional[dict]:
         growth_fonte = None
         cagr_ebit = cagr_lucro = cagr_receita = None
         margem_ini = margem_fim = None
+        trim_info = {}
         try:
             fin = stock.financials
             if fin is not None and not fin.empty:
@@ -439,6 +440,10 @@ def fetch_from_yfinance(ticker: str) -> Optional[dict]:
                         if r0 > 0 and r1 > 0:
                             margem_ini = float(ebit_s.loc[comuns[0]]) / r0 * 100
                             margem_fim = float(ebit_s.loc[comuns[-1]]) / r1 * 100
+                try:
+                    trim_info = _calc_tendencia_trimestral(fin, stock.quarterly_financials)
+                except Exception:
+                    trim_info = {}
         except Exception:
             pass
 
@@ -475,6 +480,7 @@ def fetch_from_yfinance(ticker: str) -> Optional[dict]:
             "cagr_receita": cagr_receita,
             "margem_op_inicial": margem_ini,
             "margem_op_final": margem_fim,
+            **trim_info,
             # O yfinance devolve dividendYield JA em percentual (NVDA = 0.45 significa
             # 0,45% a.a., nao 45%). Confirmado contra dividendRate/currentPrice.
             # Nao multiplicar por 100 aqui nem no front.
@@ -496,10 +502,143 @@ def _cagr(serie) -> Optional[float]:
     return ((fim / ini) ** (1 / (len(vals) - 1)) - 1) * 100
 
 
+QUEDA_LTM_LIMIAR = -10.0  # queda >= 10% no LTM vs ultimo balanco anual fechado
+QUEDA_YOY_LIMIAR = -20.0  # queda >= 20% em trimestre recente YoY (com LTM nao positivo)
+
+CAMPOS_TRIMESTRAIS = (
+    "desaceleracao_trimestral",
+    "trim_ltm_vs_anual",
+    "trim_yoy",
+    "trim_metrica",
+    "trim_ref_ltm",
+    "trim_ref_ano",
+    "trim_ref_yoy",
+)
+
+
+def _fmt_trimestre(dt) -> str:
+    """Formata uma data de fechamento trimestral como '3T26'."""
+    trimestre = (dt.month - 1) // 3 + 1
+    return f"{trimestre}T{str(dt.year)[2:]}"
+
+
+def _calc_tendencia_trimestral(fin, qfin) -> dict:
+    """
+    Detecta desaceleracao recente de lucros via balancos trimestrais do Yahoo.
+
+    Por que existe: o CAGR de 4-5 anos olha apenas exercicios anuais fechados.
+    Quando uma empresa vira o ciclo durante o ano corrente (ex.: POMO4 em 2026),
+    a cotacao cai, o P/L e o PEG encolhem e o ranking joga a acao para o topo
+    enquanto o lucro trimestral ja esta caindo.
+
+    Usa duas medidas complementares:
+    1. LTM (soma dos ultimos 4 trimestres consecutivos) vs ultimo exercicio anual
+       fechado — elimina sazonalidade e funciona mesmo quando um trimestre do
+       ano anterior vem vazio (NaN) no Yahoo.
+    2. Trimestre recente vs mesmo trimestre do ano anterior (YoY).
+
+    Prefere Lucro Operacional (EBIT) para filtrar cambio e creditos fiscais,
+    mas usa Lucro Liquido em bancos e holdings (onde EBIT e ausente, negativo
+    ou irrelevante frente ao lucro liquido, como ITSA4 e BBAS3).
+    """
+    vazio = {
+        "desaceleracao_trimestral": False,
+        "trim_ltm_vs_anual": None,
+        "trim_yoy": None,
+        "trim_metrica": None,
+        "trim_ref_ltm": None,
+        "trim_ref_ano": None,
+        "trim_ref_yoy": None,
+    }
+    if qfin is None or qfin.empty:
+        return vazio
+
+    def _serie_ord(df, nome):
+        if df is None or df.empty or nome not in df.index:
+            return None
+        s = df.loc[nome].dropna().sort_index()
+        return s if len(s) >= 1 else None
+
+    ann_ebit = _serie_ord(fin, "Operating Income")
+    ann_net = _serie_ord(fin, "Net Income")
+    q_ebit = _serie_ord(qfin, "Operating Income")
+    q_net = _serie_ord(qfin, "Net Income")
+
+    # Escolhe EBIT salvo em bancos/holdings onde o operacional nao representa o resultado.
+    usar_ebit = False
+    if q_ebit is not None and len(q_ebit) >= 2:
+        if ann_ebit is not None and float(ann_ebit.iloc[-1]) > 0:
+            if ann_net is not None and float(ann_net.iloc[-1]) > 0:
+                usar_ebit = float(ann_ebit.iloc[-1]) >= 0.25 * float(ann_net.iloc[-1])
+            else:
+                usar_ebit = True
+        elif q_net is None:
+            usar_ebit = True
+
+    if usar_ebit:
+        ann_s, q_s, metrica = ann_ebit, q_ebit, "lucro operacional"
+    elif q_net is not None and len(q_net) >= 2:
+        ann_s, q_s, metrica = ann_net, q_net, "lucro liquido"
+    else:
+        return vazio
+
+    ltm_vs_anual = None
+    ref_ltm = ref_ano = None
+    if ann_s is not None and len(q_s) >= 4:
+        last4 = q_s.iloc[-4:]
+        span_days = (last4.index[-1] - last4.index[0]).days
+        ann_dt = ann_s.index[-1]
+        ann_val = float(ann_s.iloc[-1])
+        # Exige 4 trimestres consecutivos (~270 dias de ponta a ponta) e mais
+        # recentes do que o ultimo exercicio anual fechado.
+        if 240 <= span_days <= 340 and (last4.index[-1] - ann_dt).days > 45 and ann_val > 0:
+            ltm_val = float(last4.sum())
+            ltm_vs_anual = (ltm_val / ann_val - 1.0) * 100.0
+            ref_ltm = _fmt_trimestre(last4.index[-1])
+            ref_ano = str(ann_dt.year)
+
+    # Busca par YoY nos 2 trimestres mais recentes (tolera 1 trimestre vazio no ano anterior).
+    trim_yoy = None
+    ref_yoy = None
+    inicio_busca = max(0, len(q_s) - 2)
+    for idx in range(len(q_s) - 1, inicio_busca - 1, -1):
+        d_cur = q_s.index[idx]
+        v_cur = float(q_s.iloc[idx])
+        for j in range(idx - 1, -1, -1):
+            diff = (d_cur - q_s.index[j]).days
+            if 345 <= diff <= 385:
+                v_prev = float(q_s.iloc[j])
+                if v_prev > 0:
+                    trim_yoy = (v_cur / v_prev - 1.0) * 100.0
+                    ref_yoy = f"{_fmt_trimestre(d_cur)} vs {_fmt_trimestre(q_s.index[j])}"
+                break
+        if ref_yoy:
+            break
+
+    desacel = bool(
+        (ltm_vs_anual is not None and ltm_vs_anual <= QUEDA_LTM_LIMIAR)
+        or (
+            trim_yoy is not None
+            and trim_yoy <= QUEDA_YOY_LIMIAR
+            and (ltm_vs_anual is None or ltm_vs_anual < 0)
+        )
+    )
+
+    return {
+        "desaceleracao_trimestral": desacel,
+        "trim_ltm_vs_anual": ltm_vs_anual,
+        "trim_yoy": trim_yoy,
+        "trim_metrica": metrica,
+        "trim_ref_ltm": ref_ltm,
+        "trim_ref_ano": ref_ano,
+        "trim_ref_yoy": ref_yoy,
+    }
+
+
 def fetch_profit_history(ticker: str) -> Optional[dict]:
     """
     Calcula o crescimento REAL a partir do balanco, quando a fonte primaria nao
-    publica o CAGR de lucros.
+    publica o CAGR de lucros, e verifica a tendencia trimestral recente.
 
     Por que o LUCRO OPERACIONAL vem antes do lucro liquido:
     o liquido no Brasil e contaminado por variacao cambial e nao-recorrentes.
@@ -515,7 +654,8 @@ def fetch_profit_history(ticker: str) -> Optional[dict]:
         import yfinance as yf
 
         sufixo = ".SA" if ticker[-1].isdigit() else ""
-        fin = yf.Ticker(f"{ticker}{sufixo}").financials
+        tk = yf.Ticker(f"{ticker}{sufixo}")
+        fin = tk.financials
         if fin is None or fin.empty:
             return None
 
@@ -551,6 +691,11 @@ def fetch_profit_history(ticker: str) -> Optional[dict]:
                     margem_ini = float(ebit.loc[comuns[0]]) / r0 * 100
                     margem_fim = float(ebit.loc[comuns[-1]]) / r1 * 100
 
+        try:
+            trim_info = _calc_tendencia_trimestral(fin, tk.quarterly_financials)
+        except Exception:
+            trim_info = {}
+
         return {
             "growth_rate": growth,
             "growth_fonte": fonte,
@@ -560,6 +705,7 @@ def fetch_profit_history(ticker: str) -> Optional[dict]:
             "margem_op_inicial": margem_ini,
             "margem_op_final": margem_fim,
             "exercicios": len(base),
+            **trim_info,
         }
     except Exception:
         return None
@@ -622,7 +768,7 @@ def enriquecer_crescimento(data: dict) -> dict:
 
         # Receita e margens do balanco tem janela igual a do lucro do balanco,
         # entao servem melhor ao teste de compressao do que os 5 anos da fonte.
-        for campo in ("cagr_receita", "margem_op_inicial", "margem_op_final"):
+        for campo in ("cagr_receita", "margem_op_inicial", "margem_op_final") + CAMPOS_TRIMESTRAIS:
             if hist.get(campo) is not None:
                 data[campo] = hist[campo]
 
@@ -642,6 +788,7 @@ def enriquecer_crescimento(data: dict) -> dict:
         data.get("growth_rate") is not None and fonte and fonte not in FONTES_SEM_PONTO
     )
     data.setdefault("growth_janela_conflito", False)
+    data.setdefault("desaceleracao_trimestral", False)
 
     # Sem contraprova: o numero e CAGR de LUCRO (metrica certa), mas veio da janela
     # longa da fonte e nao houve balanco para confrontar. Acontece quando o Yahoo
@@ -1001,6 +1148,13 @@ def calc_lynch(data: dict) -> dict:
         "growth_rate_fonte_original": data.get("growth_rate_fonte_original"),
         "growth_rate_balanco": data.get("growth_rate_balanco"),
         "growth_fonte_original": data.get("growth_fonte_original"),
+        "desaceleracao_trimestral": data.get("desaceleracao_trimestral", False),
+        "trim_ltm_vs_anual": data.get("trim_ltm_vs_anual"),
+        "trim_yoy": data.get("trim_yoy"),
+        "trim_metrica": data.get("trim_metrica"),
+        "trim_ref_ltm": data.get("trim_ref_ltm"),
+        "trim_ref_ano": data.get("trim_ref_ano"),
+        "trim_ref_yoy": data.get("trim_ref_yoy"),
         "dividend_yield": dividend_yield,
         # DY acima de 15% quase sempre e dividendo extraordinario (nao recorrente).
         # Sinalizado para nao ser usado como projecao de renda futura.
@@ -1159,6 +1313,8 @@ def generate_html(all_data: list[dict], fonte_counts: dict = None) -> str:
   .growth-badge.conflito {{ background: rgba(163,113,247,0.25); color: #a371f7; }}
   .growth-badge.alavanca {{ background: rgba(219,109,40,0.25); color: var(--orange, #db6d28); }}
   .growth-badge.sem-contraprova {{ background: rgba(139,148,158,0.25); color: var(--text2); }}
+  .growth-badge.desaceleracao {{ background: rgba(248,81,73,0.22); color: var(--red);
+                                 border: 1px solid rgba(248,81,73,0.55); }}
   .growth-src {{ display: block; font-size: 0.7em; color: var(--text2); margin-top: 2px; }}
   .pro-table {{ width: 100%; border-collapse: collapse; background: var(--card);
                 border-radius: 12px; overflow: hidden; margin-top: 20px; }}
@@ -1461,16 +1617,28 @@ function renderCarteira() {{
          <div style="color: var(--text2); font-size: 0.72em;">${{moeda(pos.ticker)}} ${{fmt(divAnualPos)}}/ano</div>`
       : `<div style="color: var(--text2);">—</div>`;
     
-    // REFORÇAR: score alto + preço ainda bom
+    // REFORÇAR: score alto + preço ainda bom (exceto se o lucro trimestral ja estiver caindo)
+    const desacelTrim = !!(lynch && lynch.desaceleracao_trimestral);
     if ((gScore >= 5 && margem > 0) || (lScore >= 5 && peg && peg < 0.8)) {{
-      sinal = '🔵 REFORÇAR';
-      sinalClass = 'color: var(--blue)';
-      const motivos = [];
-      if (gScore >= 5) motivos.push('Graham ' + gScore + '/6');
-      if (lScore >= 5) motivos.push('Lynch ' + lScore + '/6');
-      if (margem > 0) motivos.push('Margem +' + (margem * 100).toFixed(0) + '%');
-      if (peg && peg < 1) motivos.push('PEG ' + peg.toFixed(2));
-      sinalMotivo = motivos.join(' | ');
+      if (desacelTrim) {{
+        sinal = '🟡 AGUARDAR';
+        sinalClass = 'color: var(--yellow)';
+        const pctTrim = (lynch.trim_ltm_vs_anual !== null && lynch.trim_ltm_vs_anual !== undefined)
+          ? lynch.trim_ltm_vs_anual.toFixed(0) + '% (12m ate ' + (lynch.trim_ref_ltm || 'ult. trim.') + ' vs ' + (lynch.trim_ref_ano || 'ano ant.') + ')'
+          : (lynch.trim_yoy !== null && lynch.trim_yoy !== undefined
+            ? lynch.trim_yoy.toFixed(0) + '% (' + (lynch.trim_ref_yoy || 'YoY') + ')'
+            : 'em queda');
+        sinalMotivo = 'Desaceleracao trimestral: ' + (lynch.trim_metrica || 'lucro') + ' ' + pctTrim + ' — evitar reforco ate estabilizar';
+      }} else {{
+        sinal = '🔵 REFORÇAR';
+        sinalClass = 'color: var(--blue)';
+        const motivos = [];
+        if (gScore >= 5) motivos.push('Graham ' + gScore + '/6');
+        if (lScore >= 5) motivos.push('Lynch ' + lScore + '/6');
+        if (margem > 0) motivos.push('Margem +' + (margem * 100).toFixed(0) + '%');
+        if (peg && peg < 1) motivos.push('PEG ' + peg.toFixed(2));
+        sinalMotivo = motivos.join(' | ');
+      }}
     }}
     // MANTER: score médio ou bom sem urgência
     else if (gScore >= 4 || lScore >= 4) {{
@@ -1519,7 +1687,7 @@ function renderCarteira() {{
     return `
       <div class="carteira-card" style="grid-template-columns: 1fr 0.9fr 1fr 1fr 1fr 0.7fr 1fr;">
         <div>
-          <strong style="color: var(--blue); font-size: 1.1em;">${{pos.ticker}}</strong> ${{isUS(pos.ticker) ? '🇺🇸' : '🇧🇷'}}<br>
+          <strong style="color: var(--blue); font-size: 1.1em;">${{pos.ticker}}</strong> ${{isUS(pos.ticker) ? '🇺🇸' : '🇧🇷'}}${{desacelTrim ? '<span class="growth-badge desaceleracao" title="Lucro trimestral recente em queda — veja o sinal ao lado">📉 Trim. ' + ((lynch.trim_ltm_vs_anual !== null && lynch.trim_ltm_vs_anual !== undefined) ? lynch.trim_ltm_vs_anual.toFixed(0) : (lynch.trim_yoy || 0).toFixed(0)) + '%</span>' : ''}}<br>
           <span style="color: var(--text2); font-size: 0.85em;">${{pos.quantidade}} un</span>
         </div>
         <div>
@@ -1824,6 +1992,28 @@ function getStockBuyStrength(ticker) {{
   if (graham && graham.pvpa && graham.pvpa > 5) {{
     alertas.push('P/VPA de ' + graham.pvpa.toFixed(1) + ' — formula de Graham perde sentido nesse patamar');
   }}
+  // Desaceleracao trimestral: o CAGR de 4-5 anos olha apenas balancos anuais
+  // fechados. Se o lucro dos ultimos 12 meses ja esta caindo no ano corrente,
+  // sinaliza em destaque e penaliza a pontuacao no Top Buy para evitar armadilhas.
+  if (lynch && lynch.desaceleracao_trimestral) {{
+    const ltm = lynch.trim_ltm_vs_anual;
+    const yoy = lynch.trim_yoy;
+    const metrica = lynch.trim_metrica || 'lucro';
+    const partes = [];
+    if (ltm !== null && ltm !== undefined) {{
+      partes.push('12m ate ' + (lynch.trim_ref_ltm || 'ult. trim.') + ': ' + ltm.toFixed(1) + '% vs ' + (lynch.trim_ref_ano || 'ano ant.'));
+    }}
+    if (yoy !== null && yoy !== undefined) {{
+      partes.push((lynch.trim_ref_yoy || 'YoY') + ': ' + (yoy >= 0 ? '+' : '') + yoy.toFixed(1) + '%');
+    }}
+    const refQueda = (ltm !== null && ltm !== undefined) ? ltm : yoy;
+    if (refQueda !== null && refQueda !== undefined && refQueda <= -20) {{
+      strength -= 3;
+    }} else {{
+      strength -= 1.5;
+    }}
+    alertas.unshift('DESACELERACAO TRIMESTRAL — ' + metrica + ' em queda (' + partes.join(' | ') + '). O CAGR anual ainda nao reflete essa virada');
+  }}
   
   const tipo = (gOk && lOk) ? 'dual' : gOk ? 'graham' : lOk ? 'lynch' : 'none';
   
@@ -1871,6 +2061,22 @@ function growthBadges(ticker) {{
             '% contra ' + (cp*100).toFixed(0) + '% de retorno sobre o capital. ' +
             'O retorno vem de alavancagem, nao de eficiencia.">⚖️ ROE alavancado</span>';
   }}
+  if (l.desaceleracao_trimestral) {{
+    const ltm = l.trim_ltm_vs_anual;
+    const yoy = l.trim_yoy;
+    const val = (ltm !== null && ltm !== undefined) ? ltm : yoy;
+    const metrica = l.trim_metrica || 'lucro';
+    const detalhes = [];
+    if (ltm !== null && ltm !== undefined) {{
+      detalhes.push('12m ate ' + (l.trim_ref_ltm || 'ult. trim.') + ': ' + ltm.toFixed(1) + '% vs ' + (l.trim_ref_ano || 'ano ant.'));
+    }}
+    if (yoy !== null && yoy !== undefined) {{
+      detalhes.push((l.trim_ref_yoy || 'YoY') + ': ' + (yoy >= 0 ? '+' : '') + yoy.toFixed(1) + '%');
+    }}
+    html += '<span class="growth-badge desaceleracao" title="Desaceleracao trimestral no ' + metrica +
+            ' (' + detalhes.join(' | ') + '). O CAGR anual ainda nao capturou essa queda.">📉 Trim. ' +
+            (val !== null && val !== undefined ? val.toFixed(0) + '%' : 'queda') + '</span>';
+  }}
   return html;
 }}
 
@@ -1900,7 +2106,7 @@ function renderTopBuy() {{
                     padding: 6px 14px; border-radius: 0 10px 0 12px; font-weight: 700; font-size: 0.85em;">
           #${{i + 1}} — ${{s.strength.toFixed(1)}} pts
         </div>
-        <div style="font-size: 1.4em; font-weight: 700; color: var(--blue); margin-bottom: 4px;">${{s.ticker}}</div>
+        <div style="font-size: 1.4em; font-weight: 700; color: var(--blue); margin-bottom: 4px;">${{s.ticker}}${{growthBadges(s.ticker)}}</div>
         <div style="color: var(--text2); font-size: 0.85em; margin-bottom: 12px;">Cotacao: ${{moeda(s.ticker)}} ${{fmt(s.cotacao)}}</div>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px;">
@@ -1918,7 +2124,7 @@ function renderTopBuy() {{
         
         <div style="font-size: 0.85em;">
           ${{s.reasons.map(r => `<div style="color: var(--text2); padding: 2px 0;">✓ ${{r}}</div>`).join('')}}
-          ${{s.alertas.map(a => `<div style="color: var(--yellow); padding: 2px 0;">⚠ ${{a}}</div>`).join('')}}
+          ${{s.alertas.map(a => `<div style="color: ${{a.startsWith('DESACELERACAO') ? 'var(--red); font-weight: 600' : 'var(--yellow)'}}; padding: 2px 0;">${{a.startsWith('DESACELERACAO') ? '📉' : '⚠'}} ${{a}}</div>`).join('')}}
         </div>
       </div>
     `).join('')}}
@@ -1950,7 +2156,7 @@ function renderTopBuy() {{
           <td style="font-weight: 700;">${{s.strength.toFixed(1)}}</td>
           <td style="font-size: 0.8em; color: var(--text2);">
             ${{s.reasons.slice(0, 2).join(', ')}}
-            ${{s.alertas.length ? '<div style="color: var(--yellow);">⚠ ' + s.alertas[0] + '</div>' : ''}}
+            ${{s.alertas.length ? '<div style="color: ' + (s.alertas[0].startsWith('DESACELERACAO') ? 'var(--red); font-weight: 600' : 'var(--yellow)') + ';">' + (s.alertas[0].startsWith('DESACELERACAO') ? '📉 ' : '⚠ ') + s.alertas[0] + '</div>' : ''}}
           </td>
         </tr>
       `).join('')}}
